@@ -15,19 +15,39 @@ using UnityEngine.SceneManagement;
 [System.Serializable]
 public class LODTreeNode
 {
+    /// <summary>
+    /// 节点状态
+    /// </summary>
     public enum NodeState
     {
-        Unloaded,   // Not visible & not in memory
-        Loaded,     // Not visible but in memory
-        Enabled     // Visible & in memory
+        /// <summary>
+        /// Not visible & not in memory
+        /// </summary>
+        Unloaded,
+        /// <summary>
+        /// Not visible but in memory
+        /// </summary>
+        Loaded,
+        /// <summary>
+        /// Visible & in memory
+        /// </summary>
+        Enabled
     }
 
-    // Stores info needed to queue asynchrounes Load or Unload operations
+    /// <summary>
+    /// Stores info needed to queue asynchrounes Load or Unload operations
+    /// </summary>
     public class LoadOperation
     {
         public bool processing = false;
-        public bool load; // Is load or unload operation
-        public AsyncOperationHandle<SceneInstance> asyncOperationHandle; // Store asynchrounes operation handles
+        /// <summary>
+        /// Is load or unload operation
+        /// </summary>
+        public bool load;
+        /// <summary>
+        /// Store asynchrounes operation handles
+        /// </summary>
+        public AsyncOperationHandle<SceneInstance> asyncOperationHandle;
     }
 
     public LODManager lodManager = null;
@@ -64,7 +84,9 @@ public class LODTreeNode
         }
     }
 
-    // Unloads this node & all child nodes
+    /// <summary>
+    /// Unloads this node & all child nodes
+    /// </summary>
     public void Reset()
     {
         nodeState = NodeState.Unloaded;
@@ -86,7 +108,10 @@ public class LODTreeNode
         }
     }
 
-    // Calculate the state of the LOD node. To be applied later.
+    /// <summary>
+    /// Calculate the state of the LOD node. To be applied later.
+    /// </summary>
+    /// <param name="positionRelativeToNode"></param>
     public void UpdateVisibility(Vector2 positionRelativeToNode)
     {
         bool lodLevelForced = lodManager.forceLOD != -1 && lodLevel <= 2;
@@ -127,7 +152,9 @@ public class LODTreeNode
         }
     }
 
-    // Makes the LOD visible if possible.
+    /// <summary>
+    /// Makes the LOD visible if possible.
+    /// </summary>
     public void Enable()
     {
         if (mesh != null)
@@ -145,7 +172,9 @@ public class LODTreeNode
         }
     }
 
-    // Execute the next load operation in the queue
+    /// <summary>
+    /// Execute the next load operation in the queue
+    /// </summary>
     public void HandleLoadOperations()
     {
         if (loadOperations[0] != null)
@@ -178,7 +207,9 @@ public class LODTreeNode
         }
     }
 
-    // Queue a asynchrounes load operation if neccessary
+    /// <summary>
+    /// Queue a asynchrounes load operation if neccessary
+    /// </summary>
     public void Load()
     {
         if (!sceneRef.RuntimeKeyIsValid())
@@ -202,7 +233,9 @@ public class LODTreeNode
         HandleLoadOperations();
     }
 
-    // Queue asynchrounes unload operation if necessary
+    /// <summary>
+    /// Queue asynchrounes unload operation if necessary
+    /// </summary>
     public void Unload()
     {
         if (!sceneRef.RuntimeKeyIsValid())
@@ -226,7 +259,9 @@ public class LODTreeNode
         HandleLoadOperations();
     }
 
-    // Toggle mesh visibility depending on the node state
+    /// <summary>
+    /// Toggle mesh visibility depending on the node state
+    /// </summary>
     public void ApplyVisibility()
     {
         if (sceneRef.RuntimeKeyIsValid())
@@ -288,7 +323,9 @@ public class LODTreeNode
         }
     }
 
-    // Assign the LOD debug material if necessary
+    /// <summary>
+    /// Assign the LOD debug material if necessary
+    /// </summary>
     public void UpdateDebugMaterial()
     {
         if (lodManager.debugLODLevels && sceneIsShown)
@@ -309,14 +346,20 @@ public class LODTreeNode
 
     }
 
-    // Disables this and all child nodes
+    /// <summary>
+    /// Disables this and all child nodes
+    /// </summary>
+    /// <param name="lodManager"></param>
     public void DisableAll(LODManager lodManager)
     {
         nodeState = NodeState.Unloaded;
         DisableChildren(lodManager);
     }
 
-    // Disables on the child nodes
+    /// <summary>
+    /// Disables on the child nodes
+    /// </summary>
+    /// <param name="lodManager"></param>
     public void DisableChildren(LODManager lodManager)
     {
         for (int i = 0; i < children.Length; ++i)
@@ -328,7 +371,10 @@ public class LODTreeNode
         }
     }
 
-    // Asynchronous load operation callback
+    /// <summary>
+    /// Asynchronous load operation callback
+    /// </summary>
+    /// <param name="asyncOperationHandle"></param>
     public void OnSceneLoadComplete(AsyncOperationHandle<SceneInstance> asyncOperationHandle)
     {
         sceneHandle = asyncOperationHandle;
@@ -347,7 +393,10 @@ public class LODTreeNode
         HandleLoadOperations();
     }
 
-    // Asynchronous unload operation callback
+    /// <summary>
+    /// Asynchronous unload operation callback
+    /// </summary>
+    /// <param name="asyncOperation"></param>
     public void OnSceneUnloadComplete(AsyncOperationHandle<SceneInstance> asyncOperation)
     {
         UnloadMeshes();
@@ -355,7 +404,10 @@ public class LODTreeNode
         HandleLoadOperations();
     }
 
-    // Is called by child mesh to let parent node know how many child nodes have finished loading
+    /// <summary>
+    ///  Is called by child mesh to let parent node know how many child nodes have finished loading
+    /// </summary>
+    /// <returns></returns>
     public bool ChildFinishedLoading()
     {
         --childNodesLoading;
@@ -386,13 +438,17 @@ public class LODTreeNode
         return true;
     }
 
-    // Is called by child mesh to let parent node know how many child nodes are not loaded
+    /// <summary>
+    ///  Is called by child mesh to let parent node know how many child nodes are not loaded
+    /// </summary>
     public void ChildUnloaded()
     {
         ++childNodesLoading;
     }
 
-    // Make LOD visible
+    /// <summary>
+    ///  Make LOD visible
+    /// </summary>
     public void ShowScene()
     {
         if (sceneIsShown)
@@ -408,7 +464,9 @@ public class LODTreeNode
         UpdateDebugMaterial();
     }
 
-    // Make LOD invisible
+    /// <summary>
+    /// Make LOD invisible
+    /// </summary>
     public void HideScene()
     {
         if (!sceneIsShown)
@@ -420,7 +478,9 @@ public class LODTreeNode
         sceneIsShown = false;
     }
 
-    // Get references to all meshes used by LOD. Used to unload unused assets.
+    /// <summary>
+    /// Get references to all meshes used by LOD. Used to unload unused assets.
+    /// </summary>
     private void CollectMeshes()
     {
         meshAssets = new List<Mesh>();
@@ -436,7 +496,9 @@ public class LODTreeNode
         }
     }
 
-    // Queue meshes to be unloaded
+    /// <summary>
+    /// Queue meshes to be unloaded
+    /// </summary>
     private void UnloadMeshes()
     {
         if (meshAssets != null)
@@ -450,7 +512,10 @@ public class LODTreeNode
         }
     }
 
-    // Callback to retrieve asynchronous operation handle
+    /// <summary>
+    /// Callback to retrieve asynchronous operation handle
+    /// </summary>
+    /// <param name="asyncOperationHandle"></param>
     public void SetAsyncOperation(AsyncOperationHandle<SceneInstance> asyncOperationHandle)
     {
         loadOperations[0].processing = true;
