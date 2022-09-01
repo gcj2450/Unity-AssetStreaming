@@ -7,6 +7,11 @@ namespace DigitalOpus.MB.Core
 {
     internal class MB3_TextureCombinerPackerMeshBaker : MB3_TextureCombinerPackerRoot
     {
+        public override bool Validate(MB3_TextureCombinerPipeline.TexturePipelineData data)
+        {
+            return true;
+        }
+
         public override IEnumerator CreateAtlases(ProgressUpdateDelegate progressInfo,
             MB3_TextureCombinerPipeline.TexturePipelineData data, MB3_TextureCombiner combiner,
             AtlasPackingResult packedAtlasRects,
@@ -84,23 +89,16 @@ namespace DigitalOpus.MB.Core
                 if (progressInfo != null) progressInfo("Saving atlas: '" + property.name + "'", .04f);
                 System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
                 sw.Start();
-                if (data._saveAtlasesAsAssets && textureEditorMethods != null)
+                if (data.resultType == MB2_TextureBakeResults.ResultType.atlas)
                 {
-                    textureEditorMethods.SaveAtlasToAssetDatabase(atlases[propIdx], data.texPropertyNames[propIdx], propIdx, data.resultMaterial);
-                }
-                else
-                {
-                    data.resultMaterial.SetTexture(data.texPropertyNames[propIdx].name, atlases[propIdx]);
+                    SaveAtlasAndConfigureResultMaterial(data, textureEditorMethods, atlases[propIdx], data.texPropertyNames[propIdx], propIdx);
                 }
 
-                data.resultMaterial.SetTextureOffset(data.texPropertyNames[propIdx].name, Vector2.zero);
-                data.resultMaterial.SetTextureScale(data.texPropertyNames[propIdx].name, Vector2.one);
                 combiner._destroyTemporaryTextures(data.texPropertyNames[propIdx].name);
             }
 
             yield break;
         }
-
 
         internal static IEnumerator CopyScaledAndTiledToAtlas(MeshBakerMaterialTexture source, MB_TexSet sourceMaterial,
             ShaderTextureProperty shaderPropertyName, DRect srcSamplingRect, int targX, int targY, int targW, int targH,

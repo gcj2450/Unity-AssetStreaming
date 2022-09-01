@@ -15,8 +15,6 @@ using DigitalOpus.MB.Core;
 /// </summary>
 public abstract class MB3_MeshBakerRoot : MonoBehaviour {
 
-    public static bool DO_INTEGRITY_CHECKS = false;
-
     /**
      * Transparent shaders often require objects to be sorted along 
      */
@@ -78,6 +76,11 @@ public abstract class MB3_MeshBakerRoot : MonoBehaviour {
 	public virtual List<GameObject> GetObjectsToCombine(){
 		return null;	
 	}
+
+	public virtual void PurgeNullsFromObjectsToCombine()
+    {
+		
+    }
 	
 	public static bool DoCombinedValidate(MB3_MeshBakerRoot mom, MB_ObjsToCombineTypes objToCombineType, MB2_EditorMethodsInterface editorMethods, MB2_ValidationLevel validationLevel){
 		if (mom.textureBakeResults == null){
@@ -97,10 +100,11 @@ public abstract class MB3_MeshBakerRoot : MonoBehaviour {
 			meshAnalysisResultCache = new Dictionary<int, MB_Utility.MeshAnalysisResult>();
 		}
 		List<GameObject> objsToMesh = mom.GetObjectsToCombine();
+		Dictionary<string, Material> matName2Mat = new Dictionary<string, Material>();
 		for (int i = 0; i < objsToMesh.Count; i++){
 			GameObject go = objsToMesh[i];
 			if (go == null){
-				Debug.LogError("The list of objects to combine contains a null at position." + i + " Select and use [shift] delete to remove");
+				Debug.LogError(string.Format("The list of objects to combine contains a null at position {0}. Select and use [shift + delete] to remove the object, or purge all null objects from the context menu.", i));
 				return false;					
 			}
 			for (int j = i + 1; j < objsToMesh.Count; j++){
@@ -109,7 +113,9 @@ public abstract class MB3_MeshBakerRoot : MonoBehaviour {
 					return false;	
 				}
 			}
-			if (MB_Utility.GetGOMaterials(go).Length == 0){
+
+			Material[] mats = MB_Utility.GetGOMaterials(go);
+			if (mats.Length == 0){
 				Debug.LogError("Object " + go + " in the list of objects to be combined does not have a material");
 				return false;
 			}
@@ -133,6 +139,40 @@ public abstract class MB3_MeshBakerRoot : MonoBehaviour {
 					}
 				}
 			}
+
+			if (MBVersion.IsUsingAddressables())
+			{
+				HashSet<string> materialsWithDuplicateNames = new HashSet<string>();
+				for (int matIdx = 0; matIdx < mats.Length; matIdx++)
+				{
+					if (mats[matIdx] != null)
+					{
+						if (matName2Mat.ContainsKey(mats[matIdx].name))
+						{
+							if (mats[matIdx] != matName2Mat[mats[matIdx].name])
+							{
+								// This is an error. If using addressables we consider materials that have the same name to be the same material when baking at runtime.
+								// Two different material must NOT have the same name.
+								materialsWithDuplicateNames.Add(mats[matIdx].name);
+							}
+						}
+						else
+						{
+							matName2Mat.Add(mats[matIdx].name, mats[matIdx]);
+						}
+					}
+				}
+
+				if (materialsWithDuplicateNames.Count > 0)
+				{
+					String[] stringArray = new String[materialsWithDuplicateNames.Count];
+					materialsWithDuplicateNames.CopyTo(stringArray);
+					string matsWithSameName = string.Join(",", stringArray);
+					Debug.LogError("The source objects use different materials that have the same name (" + matsWithSameName + "). " +
+						"If using addressables, materials with the same name are considered to be the same material when baking meshes at runtime. " +
+						"If you want to use this Material Bake Result at runtime then all source materials must have distinct names. Baking in edit-mode will still work.");
+				}
+			}
 		}
 
 		
@@ -147,7 +187,7 @@ public abstract class MB3_MeshBakerRoot : MonoBehaviour {
 				Debug.LogError("No meshes to combine. Please assign some meshes to combine.");
 				return false;
 			}
-			if (mom is MB3_MeshBaker && ((MB3_MeshBaker)mom).meshCombiner.renderType == MB_RenderType.skinnedMeshRenderer){
+			if (mom is MB3_MeshBaker && ((MB3_MeshBaker)mom).meshCombiner.settings.renderType == MB_RenderType.skinnedMeshRenderer){
 				if (!editorMethods.ValidateSkinnedMeshes(objs))
 				{
 					return false;

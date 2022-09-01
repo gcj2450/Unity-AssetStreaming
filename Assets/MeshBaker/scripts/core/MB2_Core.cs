@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 
 namespace DigitalOpus.MB.Core{
-	
 	public delegate void ProgressUpdateDelegate(string msg, float progress);
     public delegate bool ProgressUpdateCancelableDelegate(string msg, float progress);
 
@@ -43,8 +42,9 @@ namespace DigitalOpus.MB.Core{
 		UnitysPackTextures,
 		MeshBakerTexturePacker,
 		MeshBakerTexturePacker_Fast,
-        MeshBakerTexturePacker_Horizontal, //special packing packs all horizontal. makes it possible to use an atlas with tiling textures
-        MeshBakerTexturePacker_Vertical, //special packing packs all Vertical. makes it possible to use an atlas with tiling textures
+        MeshBakerTexturePacker_Horizontal, //special packing packs all horizontal. makes it possible to use an atlas with tiling textures.
+        MeshBakerTexturePacker_Vertical, //special packing packs all Vertical. makes it possible to use an atlas with tiling textures.
+		MeshBakerTexturePaker_Fast_V2_Beta, // new version of MeshBakerTexterPackerFast that uses a mesh. Is compatible with URP and HDRP.
     }
 
     public enum MB_TextureTilingTreatment{
@@ -62,6 +62,13 @@ namespace DigitalOpus.MB.Core{
 		robust
 	}
 
+	public enum MB_TextureCompressionQuality
+    {
+		fast = 0,
+		normal = 50,
+		best = 100
+    }
+
 	/// <summary>
 	/// M b2_ texture combiner editor methods.
 	/// Contains functionality such as changeing texture formats
@@ -73,10 +80,10 @@ namespace DigitalOpus.MB.Core{
 		void Clear();
 		void RestoreReadFlagsAndFormats(ProgressUpdateDelegate progressInfo);
 		void SetReadWriteFlag(Texture2D tx, bool isReadable, bool addToList);
-		void AddTextureFormat(Texture2D tx, bool isNormalMap);	
-		void SaveAtlasToAssetDatabase(Texture2D atlas, ShaderTextureProperty texPropertyName, int atlasNum, Material resMat);
-		//void SetMaterialTextureProperty(Material target, ShaderTextureProperty texPropName, string texturePath);
-		//void SetNormalMap(Texture2D tx);
+		void ConvertTextureFormat_DefaultPlatform(Texture2D tx, TextureFormat targetFormat, bool isNormalMap);
+		void ConvertTextureFormat_PlatformOverride(Texture2D tx, TextureFormat targetFormat, MB_TextureCompressionQuality compressionQuality, bool isNormalMap);
+		void SaveTextureArrayToAssetDatabase(Texture2DArray atlas, TextureFormat foramt, string texPropertyName, int atlasNum, Material resMat);
+        void SaveAtlasToAssetDatabase(Texture2D atlas, ShaderTextureProperty texPropertyName, int atlasNum, bool doAnySrcMatsHaveProperty, Material resMat);
 		bool IsNormalMap(Texture2D tx);
 		string GetPlatformString();
 		void SetTextureSize(Texture2D tx, int size);
@@ -87,7 +94,16 @@ namespace DigitalOpus.MB.Core{
 		void CommitChangesToAssets();
         void OnPreTextureBake();
         void OnPostTextureBake();
-		//Needed because io.writeAllBytes does not exist in webplayer.
+
+        /// <summary>
+        /// Safe Destroy. Won't destroy assets.
+        /// </summary>
 		void Destroy(UnityEngine.Object o);
-	}	
+        void DestroyAsset(UnityEngine.Object o);
+        bool IsAnAsset(UnityEngine.Object o);
+        Texture2D CreateTemporaryAssetCopy(ShaderTextureProperty prop, Texture2D sliceTex, int w, int h, TextureFormat format, MB2_LogLevel logLevel);
+        bool TextureImporterFormatExistsForTextureFormat(TextureFormat texFormat);
+        bool ConvertTexture2DArray(Texture2DArray inArray, Texture2DArray outArray, TextureFormat outFormat);
+        void GetMaterialPrimaryKeysIfAddressables(MB2_TextureBakeResults textureBakeResults);
+    }	
 }

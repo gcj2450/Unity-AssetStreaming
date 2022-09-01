@@ -591,7 +591,6 @@ public class LODGeneratorEditor : Editor
             // Then split into grid cells based on lodGenerator.cellSize. Multiply the cell size by Mathf.Pow(2, i) for every lod level.
             // Then merge all meshes in the same cell.
             // CODE REMOVED
-
             // Start jobs to copy lightmap UVs from the lightmap mesh to the LOD meshes
             ObjectRemoved[] meshBakers = new ObjectRemoved[1];
             List<CopyLightmapUVsJob> copyLightmapUVsJobs = new List<CopyLightmapUVsJob>();

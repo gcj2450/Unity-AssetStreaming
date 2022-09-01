@@ -19,53 +19,158 @@ using DigitalOpus.MB.Core;
 /// <summary>
 /// Abstract root of the mesh combining classes
 /// </summary>
-public abstract class MB3_MeshBakerCommon : MB3_MeshBakerRoot {	
-	
-	//todo should be list of <Renderer>
-	public List<GameObject> objsToMesh;
-	
-	public abstract MB3_MeshCombiner meshCombiner{
-		get;
-	}
-	
-	public bool useObjsToMeshFromTexBaker = true;
+public abstract class MB3_MeshBakerCommon : MB3_MeshBakerRoot {
 
-	public bool clearBuffersAfterBake = true;
+    //todo should be list of <Renderer>
+    public List<GameObject> objsToMesh;
+
+    public abstract MB3_MeshCombiner meshCombiner {
+        get;
+    }
+
+    public bool useObjsToMeshFromTexBaker = true;
+
+    public bool clearBuffersAfterBake = true;
 
     //t0do put this in the batch baker
-    public string bakeAssetsInPlaceFolderPath;	
-	
-	[HideInInspector] public GameObject resultPrefab;
+    public string bakeAssetsInPlaceFolderPath;
 
-	public override MB2_TextureBakeResults textureBakeResults{
-		get {return meshCombiner.textureBakeResults; }
-		set {meshCombiner.textureBakeResults = value; }
-	}
-	
-	public override List<GameObject> GetObjectsToCombine(){
-		if (useObjsToMeshFromTexBaker){
-			MB3_TextureBaker tb = gameObject.GetComponent<MB3_TextureBaker>();
-			if (tb == null) tb = gameObject.transform.parent.GetComponent<MB3_TextureBaker>();
-			if (tb != null) {
-				return tb.GetObjectsToCombine();	
-			} else {
-				Debug.LogWarning("Use Objects To Mesh From Texture Baker was checked but no texture baker");
-				return new List<GameObject>();
-			}
-		} else {
-			if (objsToMesh == null) objsToMesh = new List<GameObject>();
-			return objsToMesh;
-		}
-	}
+    [HideInInspector] public GameObject resultPrefab;
 
-	public void EnableDisableSourceObjectRenderers(bool show){
-		for (int i = 0; i < GetObjectsToCombine().Count; i++){
-			GameObject go = GetObjectsToCombine()[i];
-			if (go != null){
-				Renderer mr = MB_Utility.GetRenderer(go);
-				if (mr != null){
-					mr.enabled = show;
-				}
+    /// <summary>
+    /// If checked then an instance will be left in the scene after baking. Otherwise scene instance will be deleted after prefab is baked.
+    /// </summary>
+    [HideInInspector] public bool resultPrefabLeaveInstanceInSceneAfterBake;
+
+    /// <summary>
+    /// Optional, combined mesh renderers will be children of this object if it exists.
+    /// </summary>
+    [HideInInspector] public Transform parentSceneObject;
+
+#if UNITY_EDITOR
+    [ContextMenu("Create Mesh Baker Settings Asset")]
+    public void CreateMeshBakerSettingsAsset()
+    {
+
+        string newFilePath = UnityEditor.EditorUtility.SaveFilePanelInProject("New Mesh Baker Settings", "MeshBakerSettings", "asset", "Create a new Mesh Baker Settings Asset");
+        if (newFilePath != null)
+        {
+            MB3_MeshCombinerSettings asset = ScriptableObject.CreateInstance<MB3_MeshCombinerSettings>();
+            UnityEditor.AssetDatabase.CreateAsset(asset, newFilePath);
+        }
+    }
+
+    [ContextMenu("Copy settings from Shared Settings")]
+    public void CopyMySettingsToAssignedSettingsAsset()
+    {
+        if (meshCombiner.settingsHolder == null)
+        {
+            Debug.LogError("No Shared Settings Asset Assigned.");
+            return;
+        }
+
+        UnityEditor.Undo.RecordObject(this, "Undo copy settings");
+        _CopySettings(meshCombiner.settingsHolder.GetMeshBakerSettings(), meshCombiner);
+        Debug.Log("Copied settings from assigned Shared Settings to this Mesh Baker.");
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+
+    [ContextMenu("Copy settings to Shared Settings")]
+    public void CopyAssignedSettingsAssetToMySettings()
+    {
+        if (meshCombiner.settingsHolder == null)
+        {
+            Debug.LogError("No Shared Settings Asset Assigned.");
+            return;
+        }
+
+        if (meshCombiner.settingsHolder is UnityEngine.Object) UnityEditor.Undo.RecordObject((UnityEngine.Object)meshCombiner.settingsHolder, "Undo copy settings");
+        _CopySettings(meshCombiner, meshCombiner.settingsHolder.GetMeshBakerSettings());
+        Debug.Log("Copied settings from this Mesh Baker to the assigned Shared Settings asset.");
+        if (meshCombiner.settingsHolder is UnityEngine.Object) UnityEditor.EditorUtility.SetDirty((UnityEngine.Object)meshCombiner.settingsHolder);
+    }
+
+    void _CopySettings(MB_IMeshBakerSettings src, MB_IMeshBakerSettings targ)
+    {
+        targ.clearBuffersAfterBake = src.clearBuffersAfterBake;
+        targ.doBlendShapes = src.doBlendShapes;
+        targ.doCol = src.doCol;
+        targ.doNorm = src.doNorm;
+        targ.doTan = src.doTan;
+        targ.doUV = src.doUV;
+        targ.doUV3 = src.doUV3;
+        targ.doUV4 = src.doUV4;
+        targ.doUV5 = src.doUV5;
+        targ.doUV6 = src.doUV6;
+        targ.doUV7 = src.doUV7;
+        targ.doUV8 = src.doUV8;
+        targ.optimizeAfterBake = src.optimizeAfterBake;
+        targ.pivotLocationType = src.pivotLocationType;
+        targ.lightmapOption = src.lightmapOption;
+        targ.renderType = src.renderType;
+        targ.uv2UnwrappingParamsHardAngle = src.uv2UnwrappingParamsHardAngle;
+        targ.uv2UnwrappingParamsPackMargin = src.uv2UnwrappingParamsPackMargin;
+    }
+#endif
+
+    public override MB2_TextureBakeResults textureBakeResults {
+        get { return meshCombiner.textureBakeResults; }
+        set { meshCombiner.textureBakeResults = value; }
+    }
+
+    public override List<GameObject> GetObjectsToCombine() {
+        if (useObjsToMeshFromTexBaker) {
+            MB3_TextureBaker tb = gameObject.GetComponent<MB3_TextureBaker>();
+            if (tb == null) tb = gameObject.transform.parent.GetComponent<MB3_TextureBaker>();
+            if (tb != null) {
+                return tb.GetObjectsToCombine();
+            } else {
+                Debug.LogWarning("Use Objects To Mesh From Texture Baker was checked but no texture baker");
+                return new List<GameObject>();
+            }
+        } else {
+            if (objsToMesh == null) objsToMesh = new List<GameObject>();
+            return objsToMesh;
+        }
+    }
+
+    [ContextMenu("Purge Objects to Combine of null references")]
+    public override void PurgeNullsFromObjectsToCombine()
+    {
+        if (useObjsToMeshFromTexBaker)
+        {
+            MB3_TextureBaker tb = gameObject.GetComponent<MB3_TextureBaker>();
+            if (tb == null)
+            {
+                tb = gameObject.transform.parent.GetComponent<MB3_TextureBaker>();
+            }
+            if (tb != null)
+            {
+                tb.PurgeNullsFromObjectsToCombine();
+            }
+            else
+            {
+                Debug.LogWarning("Use Objects To Mesh From Texture Baker was checked but no texture baker, could not purge");
+            }
+        }
+        else
+        {
+            if (objsToMesh == null)
+            {
+                objsToMesh = new List<GameObject>();
+            }
+            Debug.Log(string.Format("Purged {0} null references from objects to combine list.", objsToMesh.RemoveAll(obj => obj == null)));
+        }
+    }
+
+    public void EnableDisableSourceObjectRenderers(bool show) {
+        for (int i = 0; i < GetObjectsToCombine().Count; i++) {
+            GameObject go = GetObjectsToCombine()[i];
+            if (go != null) {
+                Renderer mr = MB_Utility.GetRenderer(go);
+                if (mr != null) {
+                    mr.enabled = show;
+                }
 
                 LODGroup lodG = mr.GetComponentInParent<LODGroup>();
                 if (lodG != null)
@@ -90,20 +195,26 @@ public abstract class MB3_MeshBakerCommon : MB3_MeshBakerRoot {
                     }
                 }
             }
-		}
-	}
+        }
+    }
 
-/// <summary>
-///  Clears the meshs and mesh related data but does not destroy it.
-/// </summary>
-	public virtual void ClearMesh(){
-		meshCombiner.ClearMesh();
-	}
+    /// <summary>
+    ///  Clears the meshs and mesh related data but does not destroy it.
+    /// </summary>
+    public virtual void ClearMesh() 
+    {
+        meshCombiner.ClearMesh();
+    }
 
-/// <summary>
-///  Clears and desroys the mesh. Clears mesh related data.
-/// </summary>		
-	public virtual void DestroyMesh(){
+    public virtual void ClearMesh(MB2_EditorMethodsInterface editorMethods)
+    {
+        meshCombiner.ClearMesh(editorMethods);
+    }
+
+    /// <summary>
+    ///  Clears and desroys the mesh. Clears mesh related data.
+    /// </summary>		
+    public virtual void DestroyMesh(){
 		meshCombiner.DestroyMesh();
 	}
 
@@ -168,7 +279,11 @@ public abstract class MB3_MeshBakerCommon : MB3_MeshBakerRoot {
 	public virtual void Apply(MB3_MeshCombiner.GenerateUV2Delegate uv2GenerationMethod=null){
 		meshCombiner.name = name + "-mesh";
 		meshCombiner.Apply(uv2GenerationMethod);
-	}
+        if (parentSceneObject != null && meshCombiner.resultSceneObject != null)
+        {
+            meshCombiner.resultSceneObject.transform.parent = parentSceneObject;
+        }
+    }
 
 /// <summary>	
 /// Applys the changes to flagged properties of the mesh. This method is slow, and should only be called once per frame. The speed is directly proportional to the number of flags that are true. Only apply necessary properties.	
@@ -187,20 +302,85 @@ public abstract class MB3_MeshBakerCommon : MB3_MeshBakerRoot {
 					  MB3_MeshCombiner.GenerateUV2Delegate uv2GenerationMethod=null){
 		meshCombiner.name = name + "-mesh";
 		meshCombiner.Apply(triangles,vertices,normals,tangents,uvs,uv2,uv3,uv4,colors,bones, blendShapesFlag,uv2GenerationMethod);
-	}	
+        if (parentSceneObject != null && meshCombiner.resultSceneObject != null)
+        {
+            meshCombiner.resultSceneObject.transform.parent = parentSceneObject;
+        }
+    }	
 	
 	public virtual bool CombinedMeshContains(GameObject go){
 		return meshCombiner.CombinedMeshContains(go);
 	}
-	
-	public virtual void UpdateGameObjects(GameObject[] gos, bool recalcBounds = true, bool updateVertices = true, bool updateNormals = true, bool updateTangents = true,
-									    bool updateUV = false, bool updateUV1 = false, bool updateUV2 = false,
-										bool updateColors = false, bool updateSkinningInfo = false){
+
+    /// <summary>
+    /// Updates the data in the combined mesh for meshes that are already in the combined mesh.
+    /// This is faster than adding and removing a mesh and has a much lower memory footprint.
+    /// This method can only be used if the meshes being updated have the same layout(number of 
+    /// vertices, triangles, submeshes).
+    /// This is faster than removing and re-adding
+    /// For efficiency update as few channels as possible.
+    /// Apply must be called to apply the changes to the combined mesh
+    /// </summary>		
+    public virtual void UpdateGameObjects(GameObject[] gos)
+    {
+        meshCombiner.name = name + "-mesh";
+        meshCombiner.UpdateGameObjects(gos, true, true, true, true, true,
+            false,false,false,false,false,false,false,false,false);
+    }
+
+    /// <summary>
+    /// Updates the data in the combined mesh for meshes that are already in the combined mesh.
+    /// This is faster than adding and removing a mesh and has a much lower memory footprint.
+    /// This method can only be used if the meshes being updated have the same layout(number of 
+    /// vertices, triangles, submeshes).
+    /// This is faster than removing and re-adding
+    /// For efficiency update as few channels as possible.
+    /// Apply must be called to apply the changes to the combined mesh
+    /// </summary>		
+    public virtual void UpdateGameObjects(GameObject[] gos, bool updateBounds)
+    {
+        meshCombiner.name = name + "-mesh";
+        meshCombiner.UpdateGameObjects(gos, true, true, true, true, true,
+            false, false, false, false, false, false, false, false, false);
+    }
+
+    /// <summary>
+    /// Updates the data in the combined mesh for meshes that are already in the combined mesh.
+    /// This is faster than adding and removing a mesh and has a much lower memory footprint.
+    /// This method can only be used if the meshes being updated have the same layout(number of 
+    /// vertices, triangles, submeshes).
+    /// This is faster than removing and re-adding
+    /// For efficiency update as few channels as possible.
+    /// Apply must be called to apply the changes to the combined mesh
+    /// </summary>		
+    public virtual void UpdateGameObjects(GameObject[] gos, bool recalcBounds, bool updateVertices, bool updateNormals, bool updateTangents,
+									    bool updateUV, bool updateUV1, bool updateUV2,
+										bool updateColors, bool updateSkinningInfo){
 		meshCombiner.name = name + "-mesh";
-		meshCombiner.UpdateGameObjects(gos,recalcBounds, updateVertices, updateNormals, updateTangents, updateUV, updateUV1, updateUV2, updateColors, updateSkinningInfo);
+		meshCombiner.UpdateGameObjects(gos,recalcBounds, updateVertices, updateNormals, updateTangents, updateUV, updateUV2, false, false, updateColors, updateSkinningInfo);
 	}
-	
-	public virtual void UpdateSkinnedMeshApproximateBounds(){
+
+    /// <summary>
+    /// Updates the data in the combined mesh for meshes that are already in the combined mesh.
+    /// This is faster than adding and removing a mesh and has a much lower memory footprint.
+    /// This method can only be used if the meshes being updated have the same layout(number of 
+    /// vertices, triangles, submeshes).
+    /// This is faster than removing and re-adding
+    /// For efficiency update as few channels as possible.
+    /// Apply must be called to apply the changes to the combined mesh
+    /// </summary>		
+    public virtual bool UpdateGameObjects(GameObject[] gos, bool recalcBounds,
+                                    bool updateVertices, bool updateNormals, bool updateTangents,
+                                    bool updateUV, bool updateUV2, bool updateUV3, bool updateUV4,
+                                    bool updateUV5, bool updateUV6, bool updateUV7, bool updateUV8,
+                                    bool updateColors, bool updateSkinningInfo)
+    {
+        meshCombiner.name = name + "-mesh";
+        return meshCombiner.UpdateGameObjects(gos, recalcBounds, updateVertices, updateNormals, updateTangents, updateUV, updateUV2, updateUV3, updateUV4, updateUV5, updateUV6, updateUV7, updateUV8, updateColors, updateSkinningInfo);
+    }
+
+
+    public virtual void UpdateSkinnedMeshApproximateBounds(){
 		if (_ValidateForUpdateSkinnedMeshBounds()){
 			meshCombiner.UpdateSkinnedMeshApproximateBounds();
 		}

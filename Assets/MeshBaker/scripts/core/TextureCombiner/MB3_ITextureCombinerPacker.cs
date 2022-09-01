@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System;
@@ -7,6 +7,8 @@ namespace DigitalOpus.MB.Core
 {
     internal interface MB_ITextureCombinerPacker
     {
+        bool Validate(MB3_TextureCombinerPipeline.TexturePipelineData data);
+
         IEnumerator ConvertTexturesToReadableFormats(ProgressUpdateDelegate progressInfo,
             MB3_TextureCombiner.CombineTexturesIntoAtlasesCoroutineResult result,
             MB3_TextureCombinerPipeline.TexturePipelineData data,
@@ -25,6 +27,8 @@ namespace DigitalOpus.MB.Core
 
     internal abstract class MB3_TextureCombinerPackerRoot : MB_ITextureCombinerPacker
     {
+        public abstract bool Validate(MB3_TextureCombinerPipeline.TexturePipelineData data);
+
         internal static void CreateTemporaryTexturesForAtlas(List<MB_TexSet> distinctMaterialTextures, MB3_TextureCombiner combiner, int propIdx, MB3_TextureCombinerPipeline.TexturePipelineData data)
         {
             for (int texSetIdx = 0; texSetIdx < data.distinctMaterialTextures.Count; texSetIdx++)
@@ -35,8 +39,30 @@ namespace DigitalOpus.MB.Core
                 {
                     //create a small 16 x 16 texture to use in the atlas
                     Color col = data.nonTexturePropertyBlender.GetColorForTemporaryTexture(txs.matsAndGOs.mats[0].mat, data.texPropertyNames[propIdx]);
-                    txs.CreateColoredTexToReplaceNull(data.texPropertyNames[propIdx].name, propIdx, data._fixOutOfBoundsUVs, combiner, col);
+                    txs.CreateColoredTexToReplaceNull(data.texPropertyNames[propIdx].name, propIdx, data._fixOutOfBoundsUVs, combiner, col, MB3_TextureCombiner.ShouldTextureBeLinear(data.texPropertyNames[propIdx]));
                 }
+            }
+        }
+
+        internal static void SaveAtlasAndConfigureResultMaterial(MB3_TextureCombinerPipeline.TexturePipelineData data, MB2_EditorMethodsInterface textureEditorMethods, Texture2D atlas, ShaderTextureProperty property, int propIdx)
+        {
+            bool doAnySrcMatsHaveProperty = MB3_TextureCombinerPipeline._DoAnySrcMatsHaveProperty(propIdx, data.allTexturesAreNullAndSameColor);
+            if (data._saveAtlasesAsAssets && textureEditorMethods != null)
+            {
+                textureEditorMethods.SaveAtlasToAssetDatabase(atlas, property, propIdx, doAnySrcMatsHaveProperty, data.resultMaterial);
+            }
+            else
+            {
+                if (doAnySrcMatsHaveProperty)
+                {
+                    data.resultMaterial.SetTexture(property.name, atlas);
+                }
+            }
+
+            if (doAnySrcMatsHaveProperty)
+            {
+                data.resultMaterial.SetTextureOffset(property.name, Vector2.zero);
+                data.resultMaterial.SetTextureScale(property.name, Vector2.one);
             }
         }
 
@@ -61,7 +87,7 @@ namespace DigitalOpus.MB.Core
                 paddings.Add(padding);
             }
 
-            return tp.GetRects(imageSizes, paddings, data._maxAtlasWidth, data._maxAtlasHeight, false);
+            return tp.GetRects(imageSizes, paddings, data._maxAtlasWidth, data._maxAtlasHeight, doMultiAtlas);
         }
 
         public static void MakeProceduralTexturesReadable(ProgressUpdateDelegate progressInfo,
@@ -71,7 +97,7 @@ namespace DigitalOpus.MB.Core
             MB2_EditorMethodsInterface textureEditorMethods,
             MB2_LogLevel LOG_LEVEL)
         {
-            Debug.LogError("TODO this should be done as close to textures being used as possible due to memory issues.");
+            //Debug.LogError("TODO this should be done as close to textures being used as possible due to memory issues.");
             //make procedural materials readable
             /*
             for (int i = 0; i < combiner._proceduralMaterials.Count; i++)
@@ -120,8 +146,9 @@ namespace DigitalOpus.MB.Core
                         if (textureEditorMethods != null)
                         {
                             Texture tx = ts.GetTexture2D();
+                            TextureFormat format = TextureFormat.RGBA32;
                             if (progressInfo != null) progressInfo(String.Format("Convert texture {0} to readable format ", tx), .5f);
-                            textureEditorMethods.AddTextureFormat((Texture2D)tx, data.texPropertyNames[j].isNormalMap);
+                            textureEditorMethods.ConvertTextureFormat_DefaultPlatform((Texture2D)tx, format, data.texPropertyNames[j].isNormalMap);
                         }
                     }
                 }

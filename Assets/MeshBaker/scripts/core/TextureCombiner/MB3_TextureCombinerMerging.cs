@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
@@ -7,6 +7,10 @@ namespace DigitalOpus.MB.Core
 {
     public class MB3_TextureCombinerMerging
     {
+        public static bool DO_INTEGRITY_CHECKS = false;
+
+        private bool _HasBeenInitialized = false;
+
         public static Rect BuildTransformMeshUV2AtlasRect(
                                             bool considerMeshUVs,
                                             Rect _atlasRect,
@@ -66,7 +70,7 @@ namespace DigitalOpus.MB.Core
         {
             if (LOG_LEVEL >= MB2_LogLevel.debug)
             {
-                Debug.Log("MergeOverlappingDistinctMaterialTexturesAndCalcMaterialSubrects");
+                Debug.Log("MergeOverlappingDistinctMaterialTexturesAndCalcMaterialSubrects num atlas rects" + distinctMaterialTextures.Count);
             }
 
             int numMerged = 0;
@@ -131,6 +135,7 @@ namespace DigitalOpus.MB.Core
                 tx.CalcMatAndUVSamplingRects();
             }
 
+            _HasBeenInitialized = true;
             // need to calculate the srcSampleRect for the complete tiling in the atlas
             // for each material need to know what the subrect would be in the atlas if material UVRect was 0,0,1,1 and Merged uvRect was full tiling
             List<int> MarkedForDeletion = new List<int>();
@@ -154,24 +159,27 @@ namespace DigitalOpus.MB.Core
                             }
                         }
 
+                        DRect encapsulatingRect1 = new DRect();
+                        DRect encapsulatingRect2 = new DRect();
                         if (idxOfFirstNotNull != -1)
                         {
                             // only in here if all properties use the same tiling so don't need to worry about which propIdx we are dealing with
                             //Get the rect that encapsulates all material and UV tiling for materials and meshes in tx1
-                            DRect encapsulatingRect1 = tx1.matsAndGOs.mats[0].samplingRectMatAndUVTiling;
+                            encapsulatingRect1 = tx1.matsAndGOs.mats[0].samplingRectMatAndUVTiling;
                             for (int matIdx = 1; matIdx < tx1.matsAndGOs.mats.Count; matIdx++)
                             {
                                 DRect tmpSsamplingRectMatAndUVTilingTx1 = tx1.matsAndGOs.mats[matIdx].samplingRectMatAndUVTiling;
                                 encapsulatingRect1 = MB3_UVTransformUtility.GetEncapsulatingRectShifted(ref encapsulatingRect1, ref tmpSsamplingRectMatAndUVTilingTx1);
                             }
+
                             //same for tx2
-                            DRect encapsulatingRect2 = tx2.matsAndGOs.mats[0].samplingRectMatAndUVTiling;
+                            encapsulatingRect2 = tx2.matsAndGOs.mats[0].samplingRectMatAndUVTiling;
                             for (int matIdx = 1; matIdx < tx2.matsAndGOs.mats.Count; matIdx++)
                             {
                                 DRect tmpSsamplingRectMatAndUVTilingTx2 = tx2.matsAndGOs.mats[matIdx].samplingRectMatAndUVTiling;
                                 encapsulatingRect2 = MB3_UVTransformUtility.GetEncapsulatingRectShifted(ref encapsulatingRect2, ref tmpSsamplingRectMatAndUVTilingTx2);
                             }
-                            
+
                             encapsulatingRectMerged = MB3_UVTransformUtility.GetEncapsulatingRectShifted(ref encapsulatingRect1, ref encapsulatingRect2);
                             accumulatedAreaCombined += encapsulatingRectMerged.width * encapsulatingRectMerged.height;
                             accumulatedAreaNotCombined += encapsulatingRect1.width * encapsulatingRect1.height + encapsulatingRect2.width * encapsulatingRect2.height;
@@ -239,9 +247,9 @@ namespace DigitalOpus.MB.Core
                                             tx1.matsAndGOs.mats[matIdx].mat, tx1.matsAndGOs.mats[matIdx].samplingRectMatAndUVTiling, tx1.ts[0].GetEncapsulatingSamplingRect());
                                     }
                                     //Integrity check that sampling rects fit into enapsulating rects
-                                    if (MB3_MeshBakerRoot.DO_INTEGRITY_CHECKS)
+                                    if (DO_INTEGRITY_CHECKS)
                                     {
-                                        if (MB3_MeshBakerRoot.DO_INTEGRITY_CHECKS) { DoIntegrityCheckMergedEncapsulatingSamplingRects(distinctMaterialTextures); }
+                                        if (DO_INTEGRITY_CHECKS) { DoIntegrityCheckMergedEncapsulatingSamplingRects(distinctMaterialTextures); }
                                     }
                                 }
                                 Debug.Log(sb.ToString());
@@ -252,12 +260,15 @@ namespace DigitalOpus.MB.Core
                         {
                             if (LOG_LEVEL >= MB2_LogLevel.debug)
                             {
-                                Debug.Log(string.Format("Considered merging {0} and {1} but there was not enough overlap. It is more efficient to bake these to separate rectangles.", tx1.GetDescription(), tx2.GetDescription()));
+                                Debug.Log(string.Format("Considered merging {0} and {1} but there was not enough overlap. It is more efficient to bake these to separate rectangles.",
+                                    tx1.GetDescription() + encapsulatingRect1,
+                                    tx2.GetDescription() + encapsulatingRect2));
                             }
                         }
                     }
                 }
             }
+
             //remove distinctMaterialTextures that were merged
             for (int j = MarkedForDeletion.Count - 1; j >= 0; j--)
             {
@@ -268,12 +279,167 @@ namespace DigitalOpus.MB.Core
             {
                 Debug.Log(string.Format("MergeOverlappingDistinctMaterialTexturesAndCalcMaterialSubrects complete merged {0} now have {1}", numMerged, distinctMaterialTextures.Count));
             }
-            if (MB3_MeshBakerRoot.DO_INTEGRITY_CHECKS) { DoIntegrityCheckMergedEncapsulatingSamplingRects(distinctMaterialTextures); }
+            if (DO_INTEGRITY_CHECKS) { DoIntegrityCheckMergedEncapsulatingSamplingRects(distinctMaterialTextures); }
+        }
+
+
+        // This should only be called after regular merge so that rects have been correctly setup.
+        public void MergeDistinctMaterialTexturesThatWouldExceedMaxAtlasSizeAndCalcMaterialSubrects(List<MB_TexSet> distinctMaterialTextures, int maxAtlasSize)
+        {
+            if (LOG_LEVEL >= MB2_LogLevel.debug)
+            {
+                Debug.Log("MergeDistinctMaterialTexturesThatWouldExceedMaxAtlasSizeAndCalcMaterialSubrects num atlas rects" + distinctMaterialTextures.Count);
+            }
+
+            Debug.Assert(_HasBeenInitialized, "MergeOverlappingDistinctMaterialTexturesAndCalcMaterialSubrects must be called before MergeDistinctMaterialTexturesThatWouldExceedMaxAtlasSizeAndCalcMaterialSubrects");
+
+            int numMerged = 0;
+
+            List<int> MarkedForDeletion = new List<int>();
+            for (int i = 0; i < distinctMaterialTextures.Count; i++)
+            {
+                MB_TexSet tx2 = distinctMaterialTextures[i];
+                for (int j = i + 1; j < distinctMaterialTextures.Count; j++)
+                {
+                    MB_TexSet tx1 = distinctMaterialTextures[j];
+                    if (tx1.AllTexturesAreSameForMerge(tx2, _considerNonTextureProperties, resultMaterialTextureBlender))
+                    {
+                        //Check if the size of the rect in the atlas would be greater than max atlas size.
+
+                        DRect encapsulatingRectMerged = new DRect();
+                        int idxOfFirstNotNull = -1;
+                        for (int propIdx = 0; propIdx < tx2.ts.Length; propIdx++)
+                        {
+                            if (!tx2.ts[propIdx].isNull)
+                            {
+                                if (idxOfFirstNotNull == -1) idxOfFirstNotNull = propIdx;
+                            }
+                        }
+
+                        DRect encapsulatingRect1 = new DRect();
+                        DRect encapsulatingRect2 = new DRect();
+                        if (idxOfFirstNotNull != -1)
+                        {
+                            // only in here if all properties use the same tiling so don't need to worry about which propIdx we are dealing with
+                            //Get the rect that encapsulates all material and UV tiling for materials and meshes in tx1
+                            encapsulatingRect1 = tx1.matsAndGOs.mats[0].samplingRectMatAndUVTiling;
+                            for (int matIdx = 1; matIdx < tx1.matsAndGOs.mats.Count; matIdx++)
+                            {
+                                DRect tmpSsamplingRectMatAndUVTilingTx1 = tx1.matsAndGOs.mats[matIdx].samplingRectMatAndUVTiling;
+                                encapsulatingRect1 = MB3_UVTransformUtility.GetEncapsulatingRectShifted(ref encapsulatingRect1, ref tmpSsamplingRectMatAndUVTilingTx1);
+                            }
+
+                            //same for tx2
+                            encapsulatingRect2 = tx2.matsAndGOs.mats[0].samplingRectMatAndUVTiling;
+                            for (int matIdx = 1; matIdx < tx2.matsAndGOs.mats.Count; matIdx++)
+                            {
+                                DRect tmpSsamplingRectMatAndUVTilingTx2 = tx2.matsAndGOs.mats[matIdx].samplingRectMatAndUVTiling;
+                                encapsulatingRect2 = MB3_UVTransformUtility.GetEncapsulatingRectShifted(ref encapsulatingRect2, ref tmpSsamplingRectMatAndUVTilingTx2);
+                            }
+
+                            encapsulatingRectMerged = MB3_UVTransformUtility.GetEncapsulatingRectShifted(ref encapsulatingRect1, ref encapsulatingRect2);
+                        }
+                        else
+                        {
+                            encapsulatingRectMerged = new DRect(0f, 0f, 1f, 1f);
+                        }
+
+                        Vector2 maxHeightWidth = tx1.GetMaxRawTextureHeightWidth();
+                        if (encapsulatingRectMerged.width * maxHeightWidth.x > maxAtlasSize ||
+                            encapsulatingRectMerged.height * maxHeightWidth.y > maxAtlasSize)
+                        {
+                            // merge tx2 into tx1
+                            numMerged++;
+                            StringBuilder sb = null;
+                            if (LOG_LEVEL >= MB2_LogLevel.info)
+                            {
+                                sb = new StringBuilder();
+                                sb.AppendFormat("About To Merge:\n   TextureSet1 {0}\n   TextureSet2 {1}\n", tx1.GetDescription(), tx2.GetDescription());
+                                if (LOG_LEVEL >= MB2_LogLevel.trace)
+                                {
+                                    for (int matIdx = 0; matIdx < tx1.matsAndGOs.mats.Count; matIdx++)
+                                    {
+                                        sb.AppendFormat("tx1 Mat {0} matAndMeshUVRect {1} fullSamplingRect {2}\n",
+                                            tx1.matsAndGOs.mats[matIdx].mat, tx1.matsAndGOs.mats[matIdx].samplingRectMatAndUVTiling, tx1.ts[0].GetEncapsulatingSamplingRect());
+                                    }
+                                    for (int matIdx = 0; matIdx < tx2.matsAndGOs.mats.Count; matIdx++)
+                                    {
+                                        sb.AppendFormat("tx2 Mat {0} matAndMeshUVRect {1} fullSamplingRect {2}\n",
+                                            tx2.matsAndGOs.mats[matIdx].mat, tx2.matsAndGOs.mats[matIdx].samplingRectMatAndUVTiling, tx2.ts[0].GetEncapsulatingSamplingRect());
+                                    }
+                                }
+                            }
+
+                            //copy game objects over
+                            for (int k = 0; k < tx2.matsAndGOs.gos.Count; k++)
+                            {
+                                if (!tx1.matsAndGOs.gos.Contains(tx2.matsAndGOs.gos[k]))
+                                {
+                                    tx1.matsAndGOs.gos.Add(tx2.matsAndGOs.gos[k]);
+                                }
+                            }
+
+                            //copy materials over from tx2 to tx1
+                            for (int matIdx = 0; matIdx < tx2.matsAndGOs.mats.Count; matIdx++)
+                            {
+                                tx1.matsAndGOs.mats.Add(tx2.matsAndGOs.mats[matIdx]);
+                            }
+
+                            tx1.SetEncapsulatingSamplingRectWhenMergingTexSets(encapsulatingRectMerged);
+                            if (!MarkedForDeletion.Contains(i))
+                            {
+                                MarkedForDeletion.Add(i);
+                            }
+
+                            if (LOG_LEVEL >= MB2_LogLevel.debug)
+                            {
+                                if (LOG_LEVEL >= MB2_LogLevel.trace)
+                                {
+                                    sb.AppendFormat("=== After Merge TextureSet {0}\n", tx1.GetDescription());
+                                    for (int matIdx = 0; matIdx < tx1.matsAndGOs.mats.Count; matIdx++)
+                                    {
+                                        sb.AppendFormat("tx1 Mat {0} matAndMeshUVRect {1} fullSamplingRect {2}\n",
+                                            tx1.matsAndGOs.mats[matIdx].mat, tx1.matsAndGOs.mats[matIdx].samplingRectMatAndUVTiling, tx1.ts[0].GetEncapsulatingSamplingRect());
+                                    }
+                                    //Integrity check that sampling rects fit into enapsulating rects
+                                    if (DO_INTEGRITY_CHECKS)
+                                    {
+                                        if (DO_INTEGRITY_CHECKS) { DoIntegrityCheckMergedEncapsulatingSamplingRects(distinctMaterialTextures); }
+                                    }
+                                }
+                                Debug.Log(sb.ToString());
+                            }
+                            break;
+                        }
+                        else
+                        {
+                            if (LOG_LEVEL >= MB2_LogLevel.debug)
+                            {
+                                Debug.Log(string.Format("Considered merging {0} and {1} but there was not enough overlap. It is more efficient to bake these to separate rectangles.",
+                                    tx1.GetDescription() + encapsulatingRect1,
+                                    tx2.GetDescription() + encapsulatingRect2));
+                            }
+                        }
+                    }
+                }
+            }
+
+            //remove distinctMaterialTextures that were merged
+            for (int j = MarkedForDeletion.Count - 1; j >= 0; j--)
+            {
+                distinctMaterialTextures.RemoveAt(MarkedForDeletion[j]);
+            }
+            MarkedForDeletion.Clear();
+            if (LOG_LEVEL >= MB2_LogLevel.debug)
+            {
+                Debug.Log(string.Format("MergeDistinctMaterialTexturesThatWouldExceedMaxAtlasSizeAndCalcMaterialSubrects complete merged {0} now have {1}", numMerged, distinctMaterialTextures.Count));
+            }
+            if (DO_INTEGRITY_CHECKS) { DoIntegrityCheckMergedEncapsulatingSamplingRects(distinctMaterialTextures); }
         }
 
         public void DoIntegrityCheckMergedEncapsulatingSamplingRects(List<MB_TexSet> distinctMaterialTextures)
         {
-            if (MB3_MeshBakerRoot.DO_INTEGRITY_CHECKS)
+            if (DO_INTEGRITY_CHECKS)
             {
                 for (int i = 0; i < distinctMaterialTextures.Count; i++)
                 {

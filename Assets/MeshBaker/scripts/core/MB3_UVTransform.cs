@@ -459,8 +459,8 @@ namespace DigitalOpus.MB.Core
             float diff = bc - tfc;
             float delta = Convert.ToInt32(diff);
             tryFitOffset += delta;
-            float sminx = tryFitLength;
-            float smaxx = tryFitLength + tryFitOffset;
+            float sminx = tryFitOffset;
+            float smaxx = tryFitOffset + tryFitLength;
             float bminx = bucketOffset - 10e-3f;
             float bmaxx = bucketOffset + bucketLength + 10e-3f;
             return bminx <= sminx && sminx <= bmaxx &&

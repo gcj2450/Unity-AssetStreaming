@@ -12,10 +12,18 @@ using UnityEngine.Serialization;
 /// </summary>
 [Serializable]
 public class MB_AtlasesAndRects{
+    /// <summary>
+    /// One atlas per texture property.
+    /// </summary>
 	public Texture2D[] atlases;
     [NonSerialized]
 	public List<MB_MaterialAndUVRect> mat2rect_map;
 	public string[] texPropertyNames;
+}
+
+public class MB_TextureArrayResultMaterial
+{
+    public MB_AtlasesAndRects[] slices;
 }
 
 [System.Serializable]
@@ -26,12 +34,193 @@ public class MB_MultiMaterial{
 }
 
 [System.Serializable]
+public class MB_TexArraySliceRendererMatPair
+{
+    public Material sourceMaterial;
+    public GameObject renderer;
+}
+
+[System.Serializable]
+public class MB_TexArraySlice
+{
+    public bool considerMeshUVs;
+    public List<MB_TexArraySliceRendererMatPair> sourceMaterials = new List<MB_TexArraySliceRendererMatPair>();
+    public bool ContainsMaterial(Material mat)
+    {
+        for (int i = 0; i < sourceMaterials.Count; i++)
+        {
+            if (sourceMaterials[i].sourceMaterial == mat) return true;
+        }
+
+        return false;
+    }
+
+    public HashSet<Material> GetDistinctMaterials()
+    {
+        HashSet<Material> distinctMats = new HashSet<Material>();
+        if (sourceMaterials == null) return distinctMats;
+        for (int i = 0; i < sourceMaterials.Count; i++)
+        {
+            distinctMats.Add(sourceMaterials[i].sourceMaterial);
+        }
+
+        return distinctMats;
+    }
+
+    public bool ContainsMaterialAndMesh(Material mat, Mesh mesh)
+    {
+        for (int i = 0; i < sourceMaterials.Count; i++)
+        {
+            if (sourceMaterials[i].sourceMaterial == mat &&
+                MB_Utility.GetMesh(sourceMaterials[i].renderer) == mesh) return true;
+        }
+
+        return false;
+    }
+
+    public List<Material> GetAllUsedMaterials(List<Material> usedMats)
+    {
+        usedMats.Clear();
+        for (int i = 0; i < sourceMaterials.Count; i++)
+        {
+            usedMats.Add(sourceMaterials[i].sourceMaterial);
+        }
+        return usedMats;
+    }
+
+    public List<GameObject> GetAllUsedRenderers(List<GameObject> allObjsFromTextureBaker)
+    {
+        if (considerMeshUVs)
+        {
+            List<GameObject> usedRendererGOs = new List<GameObject>();
+            for (int i = 0; i < sourceMaterials.Count; i++)
+            {
+                usedRendererGOs.Add(sourceMaterials[i].renderer);
+            }
+
+            return usedRendererGOs;
+        }
+        else
+        {
+            return allObjsFromTextureBaker;
+        }
+    }
+}
+
+[System.Serializable]
+public class MB_TextureArrayReference
+{
+    public string texFromatSetName;
+    public Texture2DArray texArray;
+
+    public MB_TextureArrayReference(string formatSetName, Texture2DArray ta)
+    {
+        texFromatSetName = formatSetName;
+        texArray = ta;
+    }
+}
+
+[System.Serializable]
+public class MB_TexArrayForProperty
+{
+    public string texPropertyName;
+    public MB_TextureArrayReference[] formats = new MB_TextureArrayReference[0];
+
+    public MB_TexArrayForProperty(string name, MB_TextureArrayReference[] texRefs)
+    {
+        texPropertyName = name;
+        formats = texRefs;
+    }
+}
+
+[System.Serializable]
+public class MB_MultiMaterialTexArray
+{
+    public Material combinedMaterial;
+    public List<MB_TexArraySlice> slices = new List<MB_TexArraySlice>();
+    public List<MB_TexArrayForProperty> textureProperties = new List<MB_TexArrayForProperty>();
+}
+
+[System.Serializable]
+public class MB_TextureArrayFormat
+{
+    public string propertyName;
+    public TextureFormat format;
+    [Tooltip("The ammount of time Unity takes exploring different compression options to find the compressed version of a texture that most closely matches the original art." +
+             "This is only used For iOS (and some Android formats)")]
+    public MB_TextureCompressionQuality compressionQuality = MB_TextureCompressionQuality.normal;
+}
+
+[System.Serializable]
+public class MB_TextureArrayFormatSet
+{
+    public string name;
+    public TextureFormat defaultFormat;
+
+    [Tooltip("The ammount of time Unity takes exploring different compression options to find the compressed version of a texture that most closely matches the original art." +
+         "This is only used For iOS (and some Android formats)")]
+    public MB_TextureCompressionQuality defaultCompressionQuality = MB_TextureCompressionQuality.normal;
+    public MB_TextureArrayFormat[] formatOverrides;
+
+    public bool ValidateTextureImporterFormatsExistsForTextureFormats(MB2_EditorMethodsInterface editorMethods, int idx)
+    {
+        if (editorMethods == null) return true;
+        if (!editorMethods.TextureImporterFormatExistsForTextureFormat(defaultFormat))
+        {
+            Debug.LogError("TextureImporter format does not exist for Texture Array Output Formats: " + idx + " Defaut Format " + defaultFormat);
+            return false;
+        }
+
+        for (int i = 0; i < formatOverrides.Length; i++)
+        {
+            if (!editorMethods.TextureImporterFormatExistsForTextureFormat(formatOverrides[i].format))
+            {
+                Debug.LogError("TextureImporter format does not exist for Texture Array Output Formats: " + idx + " Format Overrides: " + i + " (" + formatOverrides[i].format + ")");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public TextureFormat GetFormatForProperty(string propName, out MB_TextureCompressionQuality compressionQuality)
+    {
+        for (int i = 0; i < formatOverrides.Length; i++)
+        {
+            if (formatOverrides.Equals(formatOverrides[i].propertyName))
+            {
+                compressionQuality = formatOverrides[i].compressionQuality;
+                return formatOverrides[i].format;
+            }
+        }
+
+        compressionQuality = defaultCompressionQuality;
+        return defaultFormat;
+    }
+}
+
+[System.Serializable]
 public class MB_MaterialAndUVRect
 {
     /// <summary>
     /// The source material that was baked into the atlas.
     /// </summary>
     public Material material;
+
+    /// <summary>
+    /// The addressables primary key for this material at bake time.
+    /// DECIDED NOT TO USE THIS BECAUSE THERE IS NOT EDITOR API FOR GETTING ADDRESS.
+    /// </summary>
+    //public string matAddressablesPKey;
+
+    /// <summary>
+    /// The runtime material that corresponds to the bake time material.
+    /// The user may be baking textures in the editor and baking meshes at runtime.
+    /// Materials may at runtime loaded from asset bundles which are a different instance of the Material than the baked asset
+    /// We use the Addressables address (cached at texture bake time) to look up the runtime material.
+    /// DECIDED NOT TO USE THIS BECAUSE THERE IS NOT EDITOR API FOR GETTING ADDRESS.
+    /// </summary>
+    /// [System.NonSerialized]
+    //public Material runtimeMaterial;
     
     /// <summary>
     /// The rectangle in the atlas where the texture (including all tiling) was copied to.
@@ -42,6 +231,8 @@ public class MB_MaterialAndUVRect
     /// For debugging. The name of the first srcObj that uses this MaterialAndUVRect.
     /// </summary>
     public string srcObjName;
+
+    public int textureArraySliceIdx = -1;
 
     public bool allPropsUseSameTiling = true;
 
@@ -69,6 +260,9 @@ public class MB_MaterialAndUVRect
     /// srcUVsamplingRect
     /// </summary>
     public Rect propsUseDifferntTiling_srcUVsamplingRect;
+
+    [NonSerialized]
+    public List<GameObject> objectsThatUse;
 
     /// <summary>
     /// The tilling type for this rectangle in the atlas.
@@ -160,11 +354,48 @@ public class MB_MaterialAndUVRect
 /// It can be saved as an asset in the project so that textures can be baked in one scene and used in another.
 /// </summary>
 public class MB2_TextureBakeResults : ScriptableObject {
+    public class CoroutineResult
+    {
+        public bool isComplete;
+    }
 
-    public static int VERSION { get{ return 3252; }}
+
+    public enum ResultType
+    {
+        atlas,
+        textureArray,
+    }
+
+    public static int VERSION { get { return 3252; } }
+
     public int version;
+
+    public ResultType resultType = ResultType.atlas;
+
+    /// <summary>
+    /// Information about the atlas UV rects.
+    /// IMPORTANT a source material can appear more than once in this list. If we are using considerUVs,
+    /// then different parts of a source texture could be extracted to different atlas rects.
+    /// </summary>
     public MB_MaterialAndUVRect[] materialsAndUVRects;
+
+    /// <summary>
+    /// This is like the combinedMeshRenderer.sharedMaterials. Some materials may be omitted if they have zero submesh triangles.
+    /// There is one of these per MultiMaterial mapping.
+    /// Lists source materials that were combined into each result material, and whether considerUVs was used.
+    /// This is the result materials if building for atlases.
+    /// </summary>
     public MB_MultiMaterial[] resultMaterials;
+
+
+    /// <summary>
+    /// This is like combinedMeshRenderer.sharedMaterials. Each result mat likely uses a different shader.
+    /// There is one of these per MultiMaterialTexArray mapping.
+    /// Each of these lists the slices and each slice has list of source mats that are in that slice.
+    /// This is the result materials if building for texArrays.
+    /// </summary>
+    public MB_MultiMaterialTexArray[] resultMaterialsTexArray;
+
     public bool doMultiMaterial;
 
     public MB2_TextureBakeResults()
@@ -186,16 +417,91 @@ public class MB2_TextureBakeResults : ScriptableObject {
         version = VERSION;
     }
 
+    public int NumResultMaterials()
+    {
+        if (resultType == ResultType.atlas) return resultMaterials.Length;
+        else return resultMaterialsTexArray.Length;
+    }
+
+    public Material GetCombinedMaterialForSubmesh(int idx)
+    {
+        if (resultType == ResultType.atlas)
+        {
+            return resultMaterials[idx].combinedMaterial;
+        } else
+        {
+            return resultMaterialsTexArray[idx].combinedMaterial;
+        }
+    }
+
+    /// <summary>
+    /// If using addressables and baking meshes at runtime with atlases that were baked in the editor. 
+    /// This method should be called after asset bundles have completed loading but before baking meshes. 
+    /// 
+    /// In this case materials used by a mesh at runtime may have been loaded from somewhere other
+    /// than the build. These materials will be different instances than the Material assets in the project folder.
+    /// Looking up assets will fail.
+    /// </summary>
+    public IEnumerator FindRuntimeMaterialsFromAddresses(CoroutineResult isComplete)
+    {
+        yield return MBVersion.FindRuntimeMaterialsFromAddresses(this, isComplete);
+        isComplete.isComplete = true;
+    }
+
+    public bool GetConsiderMeshUVs(int idxInSrcMats, Material srcMaterial)
+    {
+        if (resultType == ResultType.atlas)
+        {
+            return resultMaterials[idxInSrcMats].considerMeshUVs;
+        }
+        else
+        {
+            // TODO do this once and cache.
+            List<MB_TexArraySlice> slices = resultMaterialsTexArray[idxInSrcMats].slices;
+            for (int i = 0; i < slices.Count; i++)
+            {
+                if (slices[i].ContainsMaterial(srcMaterial)) return slices[i].considerMeshUVs;
+            }
+
+            Debug.LogError("There were no source materials for any slice in this result material.");
+            return false;
+        }
+    }
+
+    public List<Material> GetSourceMaterialsUsedByResultMaterial(int resultMatIdx)
+    {
+        if (resultType == ResultType.atlas)
+        {
+            return resultMaterials[resultMatIdx].sourceMaterials;
+        } else
+        {
+            // TODO do this once and cache.
+            HashSet<Material> output = new HashSet<Material>();
+            List<MB_TexArraySlice> slices = resultMaterialsTexArray[resultMatIdx].slices;
+            for (int i = 0; i < slices.Count; i++)
+            {
+                List<Material> usedMaterials = new List<Material>();
+                slices[i].GetAllUsedMaterials(usedMaterials);
+                for (int j = 0; j < usedMaterials.Count; j++)
+                {
+                    output.Add(usedMaterials[j]);
+                }
+                
+            }
+
+            List<Material> outMats = new List<Material>(output);
+            return outMats;
+        }
+    }
+
     /// <summary>
     /// Creates for materials on renderer.
     /// </summary>
     /// <returns>Generates an MB2_TextureBakeResult that can be used if all objects to be combined use the same material.
     /// Returns a MB2_TextureBakeResults that will map all materials used by renderer r to
     /// the rectangle 0,0..1,1 in the atlas.</returns>
-    /// <param name="r">The red component.</param>
     public static MB2_TextureBakeResults CreateForMaterialsOnRenderer(GameObject[] gos, List<Material> matsOnTargetRenderer)
     {
-
         HashSet<Material> fullMaterialList = new HashSet<Material>(matsOnTargetRenderer);
         for (int i = 0; i < gos.Length; i++)
         {
@@ -215,9 +521,9 @@ public class MB2_TextureBakeResults : ScriptableObject {
                 if (!fullMaterialList.Contains(oMats[j])) { fullMaterialList.Add(oMats[j]); }
             }
         }
+
         Material[] rms = new Material[fullMaterialList.Count];
         fullMaterialList.CopyTo(rms);
-
         MB2_TextureBakeResults tbr = (MB2_TextureBakeResults) ScriptableObject.CreateInstance( typeof(MB2_TextureBakeResults) );
         List<MB_MaterialAndUVRect> mss = new List<MB_MaterialAndUVRect>();
         for (int i = 0; i < rms.Length; i++)
@@ -255,12 +561,29 @@ public class MB2_TextureBakeResults : ScriptableObject {
 	
     public bool DoAnyResultMatsUseConsiderMeshUVs()
     {
-        if (resultMaterials == null) return false;
-        for (int i = 0; i < resultMaterials.Length; i++)
+        if (resultType == ResultType.atlas)
         {
-            if (resultMaterials[i].considerMeshUVs) return true;
+            if (resultMaterials == null) return false;
+            for (int i = 0; i < resultMaterials.Length; i++)
+            {
+                if (resultMaterials[i].considerMeshUVs) return true;
+            }
+
+            return false;
         }
-        return false;
+        else
+        {
+            if (resultMaterialsTexArray == null) return false;
+            for (int i = 0; i < resultMaterialsTexArray.Length; i++)
+            {
+                MB_MultiMaterialTexArray resMat = resultMaterialsTexArray[i];
+                for (int j = 0; j < resMat.slices.Count; j++)
+                {
+                    if (resMat.slices[j].considerMeshUVs) return true;
+                }
+            }
+            return false;
+        }
     }
 
     public bool ContainsMaterial(Material m)
@@ -303,214 +626,13 @@ public class MB2_TextureBakeResults : ScriptableObject {
 		return sb.ToString();
 	}
 
-    public class Material2AtlasRectangleMapper
+    public void UpgradeToCurrentVersion(MB2_TextureBakeResults tbr)
     {
-        MB2_TextureBakeResults tbr;
-        int[] numTimesMatAppearsInAtlas;
-        MB_MaterialAndUVRect[] matsAndSrcUVRect;
-
-        public Material2AtlasRectangleMapper(MB2_TextureBakeResults res)
+        if (tbr.version < 3252)
         {
-            tbr = res;
-            matsAndSrcUVRect = res.materialsAndUVRects;
-
-            //count the number of times a material appears in the atlas. used for fast lookup
-            numTimesMatAppearsInAtlas = new int[matsAndSrcUVRect.Length];
-            for (int i = 0; i < matsAndSrcUVRect.Length; i++)
+            for (int i = 0; i < tbr.materialsAndUVRects.Length; i++)
             {
-                if (numTimesMatAppearsInAtlas[i] > 1)
-                {
-                    continue;
-                }
-                int count = 1;
-                for (int j = i + 1; j < matsAndSrcUVRect.Length; j++)
-                {
-                    if (matsAndSrcUVRect[i].material == matsAndSrcUVRect[j].material)
-                    {
-                        count++;
-                    }
-                }
-                numTimesMatAppearsInAtlas[i] = count;
-                if (count > 1)
-                {
-                    //allMatsAreUnique = false;
-                    for (int j = i + 1; j < matsAndSrcUVRect.Length; j++)
-                    {
-                        if (matsAndSrcUVRect[i].material == matsAndSrcUVRect[j].material)
-                        {
-                            numTimesMatAppearsInAtlas[j] = count;
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// A material can appear more than once in an atlas if using fixOutOfBoundsUVs.
-        /// in this case you need to use the UV rect of the mesh to find the correct rectangle.
-        /// If the all properties on the mat use the same tiling then 
-        /// encapsulatingRect can be larger and will include baked UV and material tiling
-        /// If mat uses different tiling for different maps then encapsulatingRect is the uvs of
-        /// source mesh used to bake atlas and sourceMaterialTilingOut is 0,0,1,1. This works because
-        /// material tiling was baked into the atlas.
-        /// </summary>
-        public bool TryMapMaterialToUVRect(Material mat, Mesh m, int submeshIdx, int idxInResultMats, MB3_MeshCombinerSingle.MeshChannelsCache meshChannelCache, Dictionary<int, MB_Utility.MeshAnalysisResult[]> meshAnalysisCache,
-                                             out MB_TextureTilingTreatment tilingTreatment, 
-                                             out Rect rectInAtlas,
-                                             out Rect encapsulatingRectOut,
-                                             out Rect sourceMaterialTilingOut,
-                                             ref String errorMsg,
-                                             MB2_LogLevel logLevel)
-        {
-            if (tbr.version < VERSION)
-            {
-                UpgradeToCurrentVersion(tbr);
-            }
-            tilingTreatment = MB_TextureTilingTreatment.unknown;
-            if (tbr.materialsAndUVRects.Length == 0)
-            {
-                errorMsg = "The 'Texture Bake Result' needs to be re-baked to be compatible with this version of Mesh Baker. Please re-bake using the MB3_TextureBaker.";
-                rectInAtlas = new Rect();
-                encapsulatingRectOut = new Rect();
-                sourceMaterialTilingOut = new Rect();
-                return false;
-            }
-            if (mat == null)
-            {
-                rectInAtlas = new Rect();
-                encapsulatingRectOut = new Rect();
-                sourceMaterialTilingOut = new Rect();
-                errorMsg = String.Format("Mesh {0} Had no material on submesh {1} cannot map to a material in the atlas", m.name, submeshIdx);
-                return false;
-            }
-            if (submeshIdx >= m.subMeshCount)
-            {
-                errorMsg = "Submesh index is greater than the number of submeshes";
-                rectInAtlas = new Rect();
-                encapsulatingRectOut = new Rect();
-                sourceMaterialTilingOut = new Rect();
-                return false;
-            }
-
-            //find the first index of this material
-            int idx = -1;
-            for (int i = 0; i < matsAndSrcUVRect.Length; i++)
-            {
-                if (mat == matsAndSrcUVRect[i].material)
-                {
-                    idx = i;
-                    break;
-                }
-            }
-            // if couldn't find material
-            if (idx == -1)
-            {
-                rectInAtlas = new Rect();
-                encapsulatingRectOut = new Rect();
-                sourceMaterialTilingOut = new Rect();
-                errorMsg = String.Format("Material {0} could not be found in the Texture Bake Result", mat.name);
-                return false;
-            }
-
-            if (!tbr.resultMaterials[idxInResultMats].considerMeshUVs)
-            {
-                if (numTimesMatAppearsInAtlas[idx] != 1)
-                {
-                    Debug.LogError("There is a problem with this TextureBakeResults. FixOutOfBoundsUVs is false and a material appears more than once.");
-                }
-                MB_MaterialAndUVRect mr = matsAndSrcUVRect[idx];
-                rectInAtlas = mr.atlasRect;
-                tilingTreatment = mr.tilingTreatment;
-                encapsulatingRectOut = mr.GetEncapsulatingRect();
-                sourceMaterialTilingOut = mr.GetMaterialTilingRect();
-                return true;
-            }
-            else
-            {
-                //todo what if no UVs
-                //Find UV rect in source mesh
-                MB_Utility.MeshAnalysisResult[] mar;
-                if (!meshAnalysisCache.TryGetValue(m.GetInstanceID(), out mar))
-                {
-                    mar = new MB_Utility.MeshAnalysisResult[m.subMeshCount];
-                    for (int j = 0; j < m.subMeshCount; j++)
-                    {
-                        Vector2[] uvss = meshChannelCache.GetUv0Raw(m);
-                        MB_Utility.hasOutOfBoundsUVs(uvss, m, ref mar[j], j);
-                    }
-                    meshAnalysisCache.Add(m.GetInstanceID(), mar);
-                }
-
-                //this could be a mesh that was not used in the texture baking that has huge UV tiling too big for the rect that was baked
-                //find a record that has an atlas uvRect capable of containing this
-                bool found = false;
-                Rect encapsulatingRect = new Rect(0,0,0,0);
-                Rect sourceMaterialTiling = new Rect(0,0,0,0);
-                if (logLevel >= MB2_LogLevel.trace)
-                {
-                    Debug.Log(String.Format("Trying to find a rectangle in atlas capable of holding tiled sampling rect for mesh {0} using material {1} meshUVrect={2}", m, mat, mar[submeshIdx].uvRect.ToString("f5")));
-                }
-                for (int i = idx; i < matsAndSrcUVRect.Length; i++)
-                {
-                    MB_MaterialAndUVRect matAndUVrect = matsAndSrcUVRect[i];
-                    if (matAndUVrect.material == mat)
-                    {
-                        if (matAndUVrect.allPropsUseSameTiling)
-                        {
-                            encapsulatingRect = matAndUVrect.allPropsUseSameTiling_samplingEncapsulatinRect;
-                            sourceMaterialTiling = matAndUVrect.allPropsUseSameTiling_sourceMaterialTiling;
-                        }
-                        else
-                        {
-                            encapsulatingRect = matAndUVrect.propsUseDifferntTiling_srcUVsamplingRect;
-                            sourceMaterialTiling = new Rect(0, 0, 1, 1);
-                        }
-
-                        if (IsMeshAndMaterialRectEnclosedByAtlasRect(
-                                matAndUVrect.tilingTreatment,
-                                mar[submeshIdx].uvRect,
-                                sourceMaterialTiling,
-                                encapsulatingRect,
-                                logLevel))
-                        {
-                            if (logLevel >= MB2_LogLevel.trace)
-                            {
-                                Debug.Log("Found rect in atlas capable of containing tiled sampling rect for mesh " + m + " at idx=" + i);
-                            }
-                            idx = i;
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-                if (found)
-                {
-                    MB_MaterialAndUVRect mr = matsAndSrcUVRect[idx];
-                    rectInAtlas = mr.atlasRect;
-                    tilingTreatment = mr.tilingTreatment;
-                    encapsulatingRectOut = mr.GetEncapsulatingRect();
-                    sourceMaterialTilingOut = mr.GetMaterialTilingRect();
-                    return true;
-                }
-                else
-                {
-                    rectInAtlas = new Rect();
-                    encapsulatingRectOut = new Rect();
-                    sourceMaterialTilingOut = new Rect();
-                    errorMsg = String.Format("Could not find a tiled rectangle in the atlas capable of containing the uv and material tiling on mesh {0} for material {1}. Was this mesh included when atlases were baked?", m.name, mat);
-                    return false;
-                }
-            }
-        }
-
-        private void UpgradeToCurrentVersion(MB2_TextureBakeResults tbr)
-        {
-            if (tbr.version < 3252)
-            {
-                for (int i = 0; i < tbr.materialsAndUVRects.Length; i++)
-                {
-                    tbr.materialsAndUVRects[i].allPropsUseSameTiling = true;
-                }
+                tbr.materialsAndUVRects[i].allPropsUseSameTiling = true;
             }
         }
     }
@@ -523,12 +645,7 @@ public class MB2_TextureBakeResults : ScriptableObject {
         potentialRect = MB3_UVTransformUtility.CombineTransforms(ref uvR, ref sourceMaterialTiling);
         if (logLevel >= MB2_LogLevel.trace)
         {
-            if (logLevel >= MB2_LogLevel.trace) Debug.Log("Rect in atlas uvR=" + uvR.ToString("f5") + " sourceMaterialTiling=" + sourceMaterialTiling.ToString("f5") + "Potential Rect " + potentialRect.ToString("f5") + " encapsulating=" + samplingEncapsulatinRect.ToString("f5"));
-        }
-
-        if (logLevel >= MB2_LogLevel.trace)
-        {
-            if (logLevel >= MB2_LogLevel.trace) Debug.Log("Potential Rect (must fit in encapsulating)  " + potentialRect.ToString("f5") + " encapsulating=" + samplingEncapsulatinRect.ToString("f5"));
+            if (logLevel >= MB2_LogLevel.trace) Debug.Log("IsMeshAndMaterialRectEnclosedByAtlasRect Rect in atlas uvR=" + uvR.ToString("f5") + " sourceMaterialTiling=" + sourceMaterialTiling.ToString("f5") + "Potential Rect (must fit in encapsulating) " + potentialRect.ToString("f5") + " encapsulating=" + samplingEncapsulatinRect.ToString("f5") + " tilingTreatment=" + tilingTreatment);
         }
 
         if (tilingTreatment == MB_TextureTilingTreatment.edgeToEdgeX)

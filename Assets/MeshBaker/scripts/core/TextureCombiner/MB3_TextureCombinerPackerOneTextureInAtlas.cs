@@ -7,6 +7,17 @@ namespace DigitalOpus.MB.Core
 {
     internal class MB3_TextureCombinerPackerOneTextureInAtlas : MB_ITextureCombinerPacker
     {
+        public virtual bool Validate(MB3_TextureCombinerPipeline.TexturePipelineData data)
+        {
+            if (!data.OnlyOneTextureInAtlasReuseTextures())
+            {
+                Debug.LogError("There must be only one texture in the atlas to use MB3_TextureCombinerPackerOneTextureInAtlas");
+                return false;
+            }
+
+            return true;
+        }
+
         public IEnumerator ConvertTexturesToReadableFormats(ProgressUpdateDelegate progressInfo,
             MB3_TextureCombiner.CombineTexturesIntoAtlasesCoroutineResult result,
             MB3_TextureCombinerPipeline.TexturePipelineData data,
@@ -64,9 +75,12 @@ namespace DigitalOpus.MB.Core
             {
                 MeshBakerMaterialTexture dmt = data.distinctMaterialTextures[0].ts[i];
                 atlases[i] = dmt.GetTexture2D();
-                data.resultMaterial.SetTexture(data.texPropertyNames[i].name, atlases[i]);
-                data.resultMaterial.SetTextureScale(data.texPropertyNames[i].name, Vector2.one);
-                data.resultMaterial.SetTextureOffset(data.texPropertyNames[i].name, Vector2.zero);
+                if (data.resultType == MB2_TextureBakeResults.ResultType.atlas)
+                {
+                    data.resultMaterial.SetTexture(data.texPropertyNames[i].name, atlases[i]);
+                    data.resultMaterial.SetTextureScale(data.texPropertyNames[i].name, Vector2.one);
+                    data.resultMaterial.SetTextureOffset(data.texPropertyNames[i].name, Vector2.zero);
+                }
             }
 
             yield break;

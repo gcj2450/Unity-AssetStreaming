@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Name: Platforms
   m_EditorClassIdentifier: 
   version: 3252
+  resultType: 0
   materialsAndUVRects:
   - material: {fileID: 2100000, guid: 84b39146cd1119c1a000ee884ada8c59, type: 2}
     atlasRect:
@@ -21,6 +22,7 @@ MonoBehaviour:
       width: 0.4345703
       height: 0.4345703
     srcObjName: bigBridge
+    textureArraySliceIdx: -1
     allPropsUseSameTiling: 1
     allPropsUseSameTiling_sourceMaterialTiling:
       serializedVersion: 2
@@ -49,6 +51,7 @@ MonoBehaviour:
       width: 0.24804688
       height: 0.24804688
     srcObjName: floatingPlatform
+    textureArraySliceIdx: -1
     allPropsUseSameTiling: 1
     allPropsUseSameTiling_sourceMaterialTiling:
       serializedVersion: 2
@@ -77,6 +80,7 @@ MonoBehaviour:
       width: 0.24804688
       height: 0.24804688
     srcObjName: lightPost
+    textureArraySliceIdx: -1
     allPropsUseSameTiling: 1
     allPropsUseSameTiling_sourceMaterialTiling:
       serializedVersion: 2
@@ -105,6 +109,7 @@ MonoBehaviour:
       width: 0.49804688
       height: 0.49804688
     srcObjName: bridge
+    textureArraySliceIdx: -1
     allPropsUseSameTiling: 1
     allPropsUseSameTiling_sourceMaterialTiling:
       serializedVersion: 2
@@ -133,4 +138,5 @@ MonoBehaviour:
     - {fileID: 2100000, guid: 7add3c6dcd117aa1a00026ba4ada8c59, type: 2}
     - {fileID: 2100000, guid: 0c57597dcd117aa1a00026ba4ada8c59, type: 2}
     - {fileID: 2100000, guid: fc0aa96dcd117aa1a00026ba4ada8c59, type: 2}
+  resultMaterialsTexArray: []
   doMultiMaterial: 0

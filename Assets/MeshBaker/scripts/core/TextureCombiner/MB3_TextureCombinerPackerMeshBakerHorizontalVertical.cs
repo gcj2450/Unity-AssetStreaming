@@ -5,7 +5,9 @@ using System;
 
 namespace DigitalOpus.MB.Core
 {
-
+    /*
+        TODO test
+    */
     internal class MB3_TextureCombinerPackerMeshBakerHorizontalVertical : MB3_TextureCombinerPackerMeshBaker
     {
         private interface IPipeline
@@ -28,7 +30,7 @@ namespace DigitalOpus.MB.Core
             public void SortTexSetIntoBins(MB_TexSet texSet, List<MB_TexSet> horizontalVert, List<MB_TexSet> regular, int maxAtlasWidth, int maxAtlasHeight)
             {
                 if (texSet.idealHeight >= maxAtlasHeight &&
-                    texSet.ts[0].GetEncapsulatingSamplingRect().height > 1f)
+                    texSet.ts[0].GetEncapsulatingSamplingRect().height >= 1f)
                 {
                     horizontalVert.Add(texSet);
                 }
@@ -51,7 +53,7 @@ namespace DigitalOpus.MB.Core
 
             public void MergeAtlasPackingResultStackBonAInternal(AtlasPackingResult a, AtlasPackingResult b, out Rect AatlasToFinal, out Rect BatlasToFinal, bool stretchBToAtlasWidth, int maxWidthDim, int maxHeightDim, out int atlasX, out int atlasY)
             {
-                // first calc height scale and offset
+                // first calc width scale and offset
                 float finalW = a.usedW + b.usedW;
                 float scaleXa, scaleXb;
                 if (finalW > maxWidthDim)
@@ -106,7 +108,7 @@ namespace DigitalOpus.MB.Core
             public void SortTexSetIntoBins(MB_TexSet texSet, List<MB_TexSet> horizontalVert, List<MB_TexSet> regular, int maxAtlasWidth, int maxAtlasHeight)
             {
                 if (texSet.idealWidth >= maxAtlasWidth &&
-                    texSet.ts[0].GetEncapsulatingSamplingRect().width > 1f)
+                    texSet.ts[0].GetEncapsulatingSamplingRect().width >= 1f)
                 {
                     horizontalVert.Add(texSet);
                 }
@@ -200,36 +202,53 @@ namespace DigitalOpus.MB.Core
                 pipeline = new VerticalPipeline();
             }
 
-            Debug.LogError("TODO handle max atlas dimension when not using override");
             //int maxAtlasWidth = data._maxAtlasWidth;
             //int maxAtlasHeight = data._maxAtlasHeight;
             if (_atlasDirection == AtlasDirection.horizontal)
             {
                 if (!data._useMaxAtlasWidthOverride)
                 {
-                    /*
-                    // TODO need to get the width of the atlas without mesh uvs considered
-                    int maxWidth = 0;
+                    // need to get the width of the atlas without mesh uvs considered
+                    int maxWidth = 2;
                     for (int i = 0; i < data.distinctMaterialTextures.Count; i++)
                     {
-                        
-                        Debug.LogError("TODO calc maxwidth no tiling");
+                        MB_TexSet ts = data.distinctMaterialTextures[i];
+                        int w;
+                        if (data._fixOutOfBoundsUVs)
+                        {
+                            Vector2 rawHeightWidth = ts.GetMaxRawTextureHeightWidth();
+                            w = (int)rawHeightWidth.x;
+                        }
+                        else
+                        {
+                            w = ts.idealWidth;
+                        }
+                        if (ts.idealWidth > maxWidth) maxWidth = w;
                     }
-                    */
+                    if (LOG_LEVEL >= MB2_LogLevel.debug) Debug.Log("Calculated max atlas width: " + maxWidth);
+                    data._maxAtlasWidth = maxWidth;
                 }
-
             } else
             {
                 if (!data._useMaxAtlasHeightOverride)
                 {
-                    /*
-                    // TODO need to get the width of the atlas without mesh uvs
-                    int maxHeight = 0;
+                    int maxHeight = 2;
                     for (int i = 0; i < data.distinctMaterialTextures.Count; i++)
                     {
-                        Debug.LogError("TODO calc maxwidth no tiling");
+                        MB_TexSet ts = data.distinctMaterialTextures[i];
+                        int h;
+                        if (data._fixOutOfBoundsUVs)
+                        {
+                            Vector2 rawHeightWidth = ts.GetMaxRawTextureHeightWidth();
+                            h = (int) rawHeightWidth.y;
+                        } else
+                        {
+                            h = ts.idealHeight;
+                        }
+                        if (ts.idealHeight > maxHeight) maxHeight = h;
                     }
-                    */
+                    if (LOG_LEVEL >= MB2_LogLevel.debug) Debug.Log("Calculated max atlas height: " + maxHeight);
+                    data._maxAtlasHeight = maxHeight;
                 }
             }
 
@@ -241,10 +260,7 @@ namespace DigitalOpus.MB.Core
                 pipeline.SortTexSetIntoBins(data.distinctMaterialTextures[i], horizontalVerticalDistinctMaterialTextures, regularTextures, data._maxAtlasWidth, data._maxAtlasHeight);
             }
 
-            if (LOG_LEVEL >= MB2_LogLevel.debug)
-            {
-                Debug.Log(String.Format("Splitting list of distinctMaterialTextures numHorizontalVertical={0} numRegular={1}", horizontalVerticalDistinctMaterialTextures.Count, regularTextures.Count));
-            }
+            if (LOG_LEVEL >= MB2_LogLevel.debug) Debug.Log(String.Format("Splitting list of distinctMaterialTextures numHorizontalVertical={0} numRegular={1} maxAtlasWidth={2} maxAtlasHeight={3}", horizontalVerticalDistinctMaterialTextures.Count, regularTextures.Count, data._maxAtlasWidth, data._maxAtlasHeight));
 
             //pack one bin with the horizontal vertical texture packer.
             MB2_TexturePacker tp;

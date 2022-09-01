@@ -44,4 +44,9 @@ public class MB3_MultiMeshBaker : MB3_MeshBakerCommon {
 		meshCombiner.name = name + "-mesh";
 		return _meshCombiner.AddDeleteGameObjectsByID(gos,deleteGOs,disableRendererInSource);	
 	}
+
+    public void OnDestroy()
+    {
+        _meshCombiner.DisposeRuntimeCreated();
+    }
 }

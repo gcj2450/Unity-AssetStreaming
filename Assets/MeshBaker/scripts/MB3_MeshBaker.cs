@@ -20,7 +20,7 @@ using System.Text.RegularExpressions;
 public class MB3_MeshBaker : MB3_MeshBakerCommon {	  
 	
 	[SerializeField] protected MB3_MeshCombinerSingle _meshCombiner = new MB3_MeshCombinerSingle();
-	
+
 	public override MB3_MeshCombiner meshCombiner{
 		get{return _meshCombiner;}	
 	}
@@ -48,4 +48,9 @@ public class MB3_MeshBaker : MB3_MeshBakerCommon {
 		_meshCombiner.name = name + "-mesh";
 		return _meshCombiner.AddDeleteGameObjectsByID(gos,deleteGOinstanceIDs,disableRendererInSource);
 	}
+
+    public void OnDestroy()
+    {
+        _meshCombiner.DisposeRuntimeCreated();
+    }
 }

@@ -11,12 +11,6 @@ using System.Text;
 using System.Reflection;
 
 /*
-    Test different texture packers
-    Test lots of multiple material configs
-    Try using on Coast scene
-*/
-
-/*
   
 Notes on Normal Maps in Unity3d
 
@@ -43,11 +37,29 @@ namespace DigitalOpus.MB.Core
         public string name;
         public bool isNormalMap;
 
+        /// <summary>
+        /// If we find a texture property in the result material we don't know if it is normal or not
+        /// We can try to look at how it is used in the source materials. If the majority of those are normal
+        /// then it is normal.
+        /// </summary>
+        [HideInInspector]
+        public bool isNormalDontKnow = false;
+
         public ShaderTextureProperty(string n,
                                      bool norm)
         {
             name = n;
             isNormalMap = norm;
+            isNormalDontKnow = false;
+        }
+
+        public ShaderTextureProperty(string n,
+                                     bool norm,
+                                     bool isNormalDontKnow)
+        {
+            name = n;
+            isNormalMap = norm;
+            this.isNormalDontKnow = isNormalDontKnow;
         }
 
         public override bool Equals(object obj)
@@ -78,8 +90,13 @@ namespace DigitalOpus.MB.Core
     [System.Serializable]
     public class MB3_TextureCombiner
     {
+        public class CreateAtlasesCoroutineResult
+        {
+            public bool success = true;
+            public bool isFinished = false;
+        }
 
-        private class TemporaryTexture
+        internal class TemporaryTexture
         {
             internal string property;
             internal Texture2D texture;
@@ -128,7 +145,7 @@ namespace DigitalOpus.MB.Core
         }
 
         [SerializeField]
-        protected int _maxAtlasWidthOverride = 4096;
+        protected int _maxAtlasWidthOverride = MB2_TexturePacker.MAX_ATLAS_SIZE;
         public virtual int maxAtlasWidthOverride
         {
             get { return _maxAtlasWidthOverride; }
@@ -136,7 +153,7 @@ namespace DigitalOpus.MB.Core
         }
 
         [SerializeField]
-        protected int _maxAtlasHeightOverride = 4096;
+        protected int _maxAtlasHeightOverride = MB2_TexturePacker.MAX_ATLAS_SIZE;
         public virtual int maxAtlasHeightOverride
         {
             get { return _maxAtlasHeightOverride; }
@@ -176,6 +193,14 @@ namespace DigitalOpus.MB.Core
         }
 
         [SerializeField]
+        protected int _layerTexturePackerFastMesh = -1;
+        public int layerTexturePackerFastMesh
+        {
+            get { return _layerTexturePackerFastMesh; }
+            set { _layerTexturePackerFastMesh = value; }
+        }
+
+        [SerializeField]
         protected int _maxTilingBakeSize = 1024;
         public int maxTilingBakeSize
         {
@@ -189,6 +214,15 @@ namespace DigitalOpus.MB.Core
         {
             get { return _saveAtlasesAsAssets; }
             set { _saveAtlasesAsAssets = value; }
+        }
+
+        [SerializeField]
+        protected MB2_TextureBakeResults.ResultType _resultType;
+
+        public MB2_TextureBakeResults.ResultType resultType
+        {
+            get { return _resultType; }
+            set { _resultType = value; }
         }
 
         [SerializeField]
@@ -226,6 +260,14 @@ namespace DigitalOpus.MB.Core
             set { _considerNonTextureProperties = value; }
         }
 
+        // Don't Serialize this. It should only be used in specific circumstances.
+        protected bool _doMergeDistinctMaterialTexturesThatWouldExceedAtlasSize = false;
+        public bool doMergeDistinctMaterialTexturesThatWouldExceedAtlasSize
+        {
+            get { return _doMergeDistinctMaterialTexturesThatWouldExceedAtlasSize; }
+            set { _doMergeDistinctMaterialTexturesThatWouldExceedAtlasSize = value; }
+        }
+
         //copies of textures created for the the atlas baking that should be destroyed in finalize
         private List<TemporaryTexture> _temporaryTextures = new List<TemporaryTexture>();
 
@@ -240,11 +282,13 @@ namespace DigitalOpus.MB.Core
             {
                 _RunCorutineWithoutPauseIsRunning = true;
             }
+
             if (recursionDepth > 20)
             {
                 Debug.LogError("Recursion Depth Exceeded.");
                 return;
             }
+
             while (cor.MoveNext())
             {
                 object retObj = cor.Current;
@@ -268,18 +312,19 @@ namespace DigitalOpus.MB.Core
         }
 
         /**<summary>Combines meshes and generates texture atlases. NOTE running coroutines at runtime does not work in Unity 4</summary>
-	    *  <param name="progressInfo">A delegate function that will be called to report progress.</param>
-	    *  <param name="textureEditorMethods">If called from the editor should be an instance of MB2_EditorMethods. If called at runtime should be null.</param>
-	    *  <remarks>Combines meshes and generates texture atlases</remarks> */
-        public bool CombineTexturesIntoAtlases(ProgressUpdateDelegate progressInfo, MB_AtlasesAndRects resultAtlasesAndRects, Material resultMaterial, List<GameObject> objsToMesh, List<Material> allowedMaterialsFilter, MB2_EditorMethodsInterface textureEditorMethods = null, List<AtlasPackingResult> packingResults = null, bool onlyPackRects = false)
+        *  <param name="progressInfo">A delegate function that will be called to report progress.</param>
+        *  <param name="textureEditorMethods">If called from the editor should be an instance of MB2_EditorMethods. If called at runtime should be null.</param>
+        *  <remarks>Combines meshes and generates texture atlases</remarks> */
+        public bool CombineTexturesIntoAtlases(ProgressUpdateDelegate progressInfo, MB_AtlasesAndRects resultAtlasesAndRects, Material resultMaterial, List<GameObject> objsToMesh, List<Material> allowedMaterialsFilter, List<string> texPropsToIgnore, MB2_EditorMethodsInterface textureEditorMethods = null, List<AtlasPackingResult> packingResults = null, bool onlyPackRects = false, bool splitAtlasWhenPackingIfTooBig = false)
         {
             CombineTexturesIntoAtlasesCoroutineResult result = new CombineTexturesIntoAtlasesCoroutineResult();
-            RunCorutineWithoutPause(_CombineTexturesIntoAtlases(progressInfo, result, resultAtlasesAndRects, resultMaterial, objsToMesh, allowedMaterialsFilter, textureEditorMethods, packingResults, onlyPackRects), 0);
+            RunCorutineWithoutPause(_CombineTexturesIntoAtlases(progressInfo, result, resultAtlasesAndRects, resultMaterial, objsToMesh, allowedMaterialsFilter, texPropsToIgnore, textureEditorMethods, packingResults, onlyPackRects, splitAtlasWhenPackingIfTooBig), 0);
+            if (result.success == false) Debug.LogError("Failed to generate atlases.");
             return result.success;
         }
 
         //float _maxTimePerFrameForCoroutine;
-        public IEnumerator CombineTexturesIntoAtlasesCoroutine(ProgressUpdateDelegate progressInfo, MB_AtlasesAndRects resultAtlasesAndRects, Material resultMaterial, List<GameObject> objsToMesh, List<Material> allowedMaterialsFilter, MB2_EditorMethodsInterface textureEditorMethods = null, CombineTexturesIntoAtlasesCoroutineResult coroutineResult = null, float maxTimePerFrame = .01f, List<AtlasPackingResult> packingResults = null, bool onlyPackRects = false)
+        public IEnumerator CombineTexturesIntoAtlasesCoroutine(ProgressUpdateDelegate progressInfo, MB_AtlasesAndRects resultAtlasesAndRects, Material resultMaterial, List<GameObject> objsToMesh, List<Material> allowedMaterialsFilter, List<string> texPropsToIgnore, MB2_EditorMethodsInterface textureEditorMethods = null, CombineTexturesIntoAtlasesCoroutineResult coroutineResult = null, float maxTimePerFrame = .01f, List<AtlasPackingResult> packingResults = null, bool onlyPackRects = false, bool splitAtlasWhenPackingIfTooBig = false)
         {
             if (!_RunCorutineWithoutPauseIsRunning && (MBVersion.GetMajorVersion() < 5 || (MBVersion.GetMajorVersion() == 5 && MBVersion.GetMinorVersion() < 3)))
             {
@@ -295,12 +340,12 @@ namespace DigitalOpus.MB.Core
                 yield break;
             }
             //_maxTimePerFrameForCoroutine = maxTimePerFrame;
-            yield return _CombineTexturesIntoAtlases(progressInfo, coroutineResult, resultAtlasesAndRects, resultMaterial, objsToMesh, allowedMaterialsFilter, textureEditorMethods, packingResults, onlyPackRects);
+            yield return _CombineTexturesIntoAtlases(progressInfo, coroutineResult, resultAtlasesAndRects, resultMaterial, objsToMesh, allowedMaterialsFilter, texPropsToIgnore, textureEditorMethods, packingResults, onlyPackRects, splitAtlasWhenPackingIfTooBig);
             coroutineResult.isFinished = true;
             yield break;
         }
 
-        IEnumerator _CombineTexturesIntoAtlases(ProgressUpdateDelegate progressInfo, CombineTexturesIntoAtlasesCoroutineResult result, MB_AtlasesAndRects resultAtlasesAndRects, Material resultMaterial, List<GameObject> objsToMesh, List<Material> allowedMaterialsFilter, MB2_EditorMethodsInterface textureEditorMethods, List<AtlasPackingResult> atlasPackingResult, bool onlyPackRects)
+        IEnumerator _CombineTexturesIntoAtlases(ProgressUpdateDelegate progressInfo, CombineTexturesIntoAtlasesCoroutineResult result, MB_AtlasesAndRects resultAtlasesAndRects, Material resultMaterial, List<GameObject> objsToMesh, List<Material> allowedMaterialsFilter, List<string> texPropsToIgnore, MB2_EditorMethodsInterface textureEditorMethods, List<AtlasPackingResult> atlasPackingResult, bool onlyPackRects, bool splitAtlasWhenPackingIfTooBig)
         {
             System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
             sw.Start();
@@ -313,6 +358,14 @@ namespace DigitalOpus.MB.Core
                 {
                     textureEditorMethods.Clear();
                     textureEditorMethods.OnPreTextureBake();
+                }
+
+                if (splitAtlasWhenPackingIfTooBig == true &&
+                    onlyPackRects == false)
+                {
+                    Debug.LogError("Can only use 'splitAtlasWhenPackingIfTooLarge' with 'onlyPackRects'");
+                    result.success = false;
+                    yield break;
                 }
 
                 if (objsToMesh == null || objsToMesh.Count == 0)
@@ -329,7 +382,7 @@ namespace DigitalOpus.MB.Core
                     yield break;
                 }
 
-                if (_maxTilingBakeSize < 2 || _maxTilingBakeSize > 4096)
+                if (_maxTilingBakeSize < 2 || _maxTilingBakeSize > MB2_TexturePacker.MAX_ATLAS_SIZE)
                 {
                     Debug.LogError("Invalid value for max tiling bake size.");
                     result.success = false;
@@ -355,8 +408,8 @@ namespace DigitalOpus.MB.Core
                 if (progressInfo != null)
                     progressInfo("Collecting textures for " + objsToMesh.Count + " meshes.", .01f);
 
-                MB3_TextureCombinerPipeline.TexturePipelineData data = LoadPipelineData(resultMaterial, new List<ShaderTextureProperty>(), objsToMesh, allowedMaterialsFilter, new List<MB_TexSet>());
-                if (! MB3_TextureCombinerPipeline._CollectPropertyNames(data, LOG_LEVEL))
+                MB3_TextureCombinerPipeline.TexturePipelineData data = LoadPipelineData(resultMaterial, new List<ShaderTextureProperty>(), objsToMesh, allowedMaterialsFilter, texPropsToIgnore, new List<MB_TexSet>());
+                if (!MB3_TextureCombinerPipeline._CollectPropertyNames(data, LOG_LEVEL))
                 {
                     result.success = false;
                     yield break;
@@ -375,21 +428,24 @@ namespace DigitalOpus.MB.Core
 
                 if (onlyPackRects)
                 {
-                    yield return __RunTexturePacker(result, data, textureEditorMethods, atlasPackingResult);
+                    yield return __RunTexturePackerOnly(result, resultAtlasesAndRects, data, splitAtlasWhenPackingIfTooBig, textureEditorMethods, atlasPackingResult);
                 }
                 else
                 {
                     yield return __CombineTexturesIntoAtlases(progressInfo, result, resultAtlasesAndRects, data, textureEditorMethods);
                 }
-                /*
-			} catch (MissingReferenceException mrex){
-				Debug.LogError("Creating atlases failed a MissingReferenceException was thrown. This is normally only happens when trying to create very large atlases and Unity is running out of Memory. Try changing the 'Texture Packer' to a different option, it may work with an alternate packer. This error is sometimes intermittant. Try baking again.");
-				Debug.LogError(mrex);
-			} catch (Exception ex){
-				Debug.LogError(ex);*/
             }
+            /*
+            catch (MissingReferenceException mrex){
+                Debug.LogError("Creating atlases failed a MissingReferenceException was thrown. This is normally only happens when trying to create very large atlases and Unity is running out of Memory. Try changing the 'Texture Packer' to a different option, it may work with an alternate packer. This error is sometimes intermittant. Try baking again.");
+                Debug.LogError(mrex);
+            } catch (Exception ex){
+                Debug.LogError(ex);
+            }
+            */
             finally
             {
+
                 _destroyAllTemporaryTextures();
                 _restoreProceduralMaterials();
                 if (textureEditorMethods != null)
@@ -399,11 +455,13 @@ namespace DigitalOpus.MB.Core
                 }
                 if (LOG_LEVEL >= MB2_LogLevel.debug) Debug.Log("===== Done creating atlases for " + resultMaterial + " Total time to create atlases " + sw.Elapsed.ToString());
             }
-            //result.success = success;
         }
 
         MB3_TextureCombinerPipeline.TexturePipelineData LoadPipelineData(Material resultMaterial,
-            List<ShaderTextureProperty> texPropertyNames, List<GameObject> objsToMesh, List<Material> allowedMaterialsFilter,
+            List<ShaderTextureProperty> texPropertyNames,
+            List<GameObject> objsToMesh,
+            List<Material> allowedMaterialsFilter,
+            List<string> texPropsToIgnore,
             List<MB_TexSet> distinctMaterialTextures)
         {
             MB3_TextureCombinerPipeline.TexturePipelineData data = new MB3_TextureCombinerPipeline.TexturePipelineData();
@@ -423,26 +481,32 @@ namespace DigitalOpus.MB.Core
             {
                 data._maxAtlasWidth = _maxAtlasWidthOverride;
                 data._useMaxAtlasWidthOverride = true;
-            } else
+            }
+            else
             {
                 data._maxAtlasWidth = _maxAtlasSize;
             }
 
+            data._saveAtlasesAsAssets = _saveAtlasesAsAssets;
+            data.resultType = _resultType;
             data._resizePowerOfTwoTextures = _resizePowerOfTwoTextures;
             data._fixOutOfBoundsUVs = _fixOutOfBoundsUVs;
             data._maxTilingBakeSize = _maxTilingBakeSize;
-            data._saveAtlasesAsAssets = _saveAtlasesAsAssets;
             data._packingAlgorithm = _packingAlgorithm;
+            data._layerTexturePackerFastV2 = _layerTexturePackerFastMesh;
             data._meshBakerTexturePackerForcePowerOfTwo = _meshBakerTexturePackerForcePowerOfTwo;
             data._customShaderPropNames = _customShaderPropNames;
             data._normalizeTexelDensity = _normalizeTexelDensity;
             data._considerNonTextureProperties = _considerNonTextureProperties;
+            data.doMergeDistinctMaterialTexturesThatWouldExceedAtlasSize = _doMergeDistinctMaterialTexturesThatWouldExceedAtlasSize;
             data.nonTexturePropertyBlender = new MB3_TextureCombinerNonTextureProperties(LOG_LEVEL, _considerNonTextureProperties);
             data.resultMaterial = resultMaterial;
             data.distinctMaterialTextures = distinctMaterialTextures;
             data.allObjsToMesh = objsToMesh;
             data.allowedMaterialsFilter = allowedMaterialsFilter;
             data.texPropertyNames = texPropertyNames;
+            data.texPropNamesToIgnore = texPropsToIgnore;
+            data.colorSpace = MBVersion.GetProjectColorSpace();
             return data;
         }
 
@@ -455,52 +519,38 @@ namespace DigitalOpus.MB.Core
             if (LOG_LEVEL >= MB2_LogLevel.debug) Debug.Log("__CombineTexturesIntoAtlases texture properties in shader:" + data.texPropertyNames.Count + " objsToMesh:" + data.allObjsToMesh.Count + " _fixOutOfBoundsUVs:" + data._fixOutOfBoundsUVs);
 
             if (progressInfo != null) progressInfo("Collecting textures ", .01f);
+
+            MB3_TextureCombinerPipeline pipeline = new MB3_TextureCombinerPipeline();
             /*
-			each atlas (maintex, bump, spec etc...) will have distinctMaterialTextures.Count images in it.
-			each distinctMaterialTextures record is a set of textures, one for each atlas. And a list of materials
-			that use that distinct set of textures. 
-			*/
+            each atlas (maintex, bump, spec etc...) will have distinctMaterialTextures.Count images in it.
+            each distinctMaterialTextures record is a set of textures, one for each atlas. And a list of materials
+            that use that distinct set of textures. 
+            */
             List<GameObject> usedObjsToMesh = new List<GameObject>();
-            yield return MB3_TextureCombinerPipeline.__Step1_CollectDistinctMatTexturesAndUsedObjects(progressInfo, result, data, this, textureEditorMethods, usedObjsToMesh, LOG_LEVEL);
+            yield return pipeline.__Step1_CollectDistinctMatTexturesAndUsedObjects(progressInfo, result, data, this, textureEditorMethods, usedObjsToMesh, LOG_LEVEL);
             if (!result.success)
             {
                 yield break;
             }
 
-            if (MB3_MeshCombiner.EVAL_VERSION)
-            {
-                bool usesAllowedShaders = true;
-                for (int i = 0; i < data.distinctMaterialTextures.Count; i++)
-                {
-                    for (int j = 0; j < data.distinctMaterialTextures[i].matsAndGOs.mats.Count; j++)
-                    {
-                        if (!data.distinctMaterialTextures[i].matsAndGOs.mats[j].mat.shader.name.EndsWith("Diffuse") &&
-                            !data.distinctMaterialTextures[i].matsAndGOs.mats[j].mat.shader.name.EndsWith("Bumped Diffuse"))
-                        {
-                            Debug.LogError("The free version of Mesh Baker only works with Diffuse and Bumped Diffuse Shaders. The full version can be used with any shader. Material " + data.distinctMaterialTextures[i].matsAndGOs.mats[j].mat.name + " uses shader " + data.distinctMaterialTextures[i].matsAndGOs.mats[j].mat.shader.name);
-                            usesAllowedShaders = false;
-                        }
-                    }
-                }
-                if (!usesAllowedShaders)
-                {
-                    result.success = false;
-                    yield break;
-                }
-            }
-
             //Textures in each material (_mainTex, Bump, Spec ect...) must be same size
             //Calculate the best sized to use. Takes into account tiling
             //if only one texture in atlas re-uses original sizes	
-            yield return MB3_TextureCombinerPipeline.CalculateIdealSizesForTexturesInAtlasAndPadding(progressInfo, result, data, this, textureEditorMethods, LOG_LEVEL);
+            yield return pipeline.CalculateIdealSizesForTexturesInAtlasAndPadding(progressInfo, result, data, this, textureEditorMethods, LOG_LEVEL);
             if (!result.success)
             {
                 yield break;
             }
 
             //buildAndSaveAtlases
-            StringBuilder report = MB3_TextureCombinerPipeline.GenerateReport(data);
-            MB_ITextureCombinerPacker texturePaker = MB3_TextureCombinerPipeline.CreatePacker(data.OnlyOneTextureInAtlasReuseTextures(), data._packingAlgorithm);
+            StringBuilder report = pipeline.GenerateReport(data);
+            MB_ITextureCombinerPacker texturePaker = pipeline.CreatePacker(data.OnlyOneTextureInAtlasReuseTextures(), data._packingAlgorithm);
+            if (!texturePaker.Validate(data))
+            {
+                result.success = false;
+                yield break;
+            }
+
             yield return texturePaker.ConvertTexturesToReadableFormats(progressInfo, result, data, this, textureEditorMethods, LOG_LEVEL);
             if (!result.success)
             {
@@ -508,29 +558,31 @@ namespace DigitalOpus.MB.Core
             }
 
             AtlasPackingResult[] uvRects = texturePaker.CalculateAtlasRectangles(data, false, LOG_LEVEL);
-            yield return MB3_TextureCombinerPipeline.__Step3_BuildAndSaveAtlasesAndStoreResults(result, progressInfo, data, this, texturePaker, uvRects[0], textureEditorMethods, resultAtlasesAndRects, report, LOG_LEVEL);
+            Debug.Assert(uvRects.Length == 1, "Error, there should not be more than one packing here.");
+            yield return pipeline.__Step3_BuildAndSaveAtlasesAndStoreResults(result, progressInfo, data, this, texturePaker, uvRects[0], textureEditorMethods, resultAtlasesAndRects, report, LOG_LEVEL);
         }
 
-        IEnumerator __RunTexturePacker(CombineTexturesIntoAtlasesCoroutineResult result, MB3_TextureCombinerPipeline.TexturePipelineData data, MB2_EditorMethodsInterface textureEditorMethods, List<AtlasPackingResult> packingResult)
+        IEnumerator __RunTexturePackerOnly(CombineTexturesIntoAtlasesCoroutineResult result, MB_AtlasesAndRects resultAtlasesAndRects, MB3_TextureCombinerPipeline.TexturePipelineData data, bool splitAtlasWhenPackingIfTooBig, MB2_EditorMethodsInterface textureEditorMethods, List<AtlasPackingResult> packingResult)
         {
+            MB3_TextureCombinerPipeline pipeline = new MB3_TextureCombinerPipeline();
             if (LOG_LEVEL >= MB2_LogLevel.debug) Debug.Log("__RunTexturePacker texture properties in shader:" + data.texPropertyNames.Count + " objsToMesh:" + data.allObjsToMesh.Count + " _fixOutOfBoundsUVs:" + data._fixOutOfBoundsUVs);
             List<GameObject> usedObjsToMesh = new List<GameObject>();
-            yield return MB3_TextureCombinerPipeline.__Step1_CollectDistinctMatTexturesAndUsedObjects(null, result, data, this, textureEditorMethods, usedObjsToMesh, LOG_LEVEL);
+            yield return pipeline.__Step1_CollectDistinctMatTexturesAndUsedObjects(null, result, data, this, textureEditorMethods, usedObjsToMesh, LOG_LEVEL);
             if (!result.success)
             {
                 yield break;
             }
 
             data.allTexturesAreNullAndSameColor = new MB3_TextureCombinerPipeline.CreateAtlasForProperty[data.texPropertyNames.Count];
-            yield return MB3_TextureCombinerPipeline.CalculateIdealSizesForTexturesInAtlasAndPadding(null, result, data, this, textureEditorMethods, LOG_LEVEL);
+            yield return pipeline.CalculateIdealSizesForTexturesInAtlasAndPadding(null, result, data, this, textureEditorMethods, LOG_LEVEL);
             if (!result.success)
             {
                 yield break;
             }
 
-            MB_ITextureCombinerPacker texturePaker = MB3_TextureCombinerPipeline.CreatePacker(data.OnlyOneTextureInAtlasReuseTextures(), data._packingAlgorithm);
+            MB_ITextureCombinerPacker texturePaker = pipeline.CreatePacker(data.OnlyOneTextureInAtlasReuseTextures(), data._packingAlgorithm);
             //    run the texture packer only
-            AtlasPackingResult[] aprs = MB3_TextureCombinerPipeline.__Step3_RunTexturePacker(data, texturePaker, LOG_LEVEL);
+            AtlasPackingResult[] aprs = pipeline.RunTexturePackerOnly(data, splitAtlasWhenPackingIfTooBig, resultAtlasesAndRects, texturePaker, LOG_LEVEL);
             for (int i = 0; i < aprs.Length; i++)
             {
                 packingResult.Add(aprs[i]);
@@ -543,14 +595,19 @@ namespace DigitalOpus.MB.Core
         }
 
         //used to track temporary textures that were created so they can be destroyed
-        public Texture2D _createTemporaryTexture(string propertyName, int w, int h, TextureFormat texFormat, bool mipMaps)
+        public Texture2D _createTemporaryTexture(string propertyName, int w, int h, TextureFormat texFormat, bool mipMaps, bool linear)
         {
-            Texture2D t = new Texture2D(w, h, texFormat, mipMaps);
+            Texture2D t = new Texture2D(w, h, texFormat, mipMaps, linear);
             t.name = string.Format("tmp{0}_{1}x{2}", _temporaryTextures.Count, w, h);
             MB_Utility.setSolidColor(t, Color.clear);
             TemporaryTexture txx = new TemporaryTexture(propertyName, t);
             _temporaryTextures.Add(txx);
             return t;
+        }
+
+        internal void AddTemporaryTexture(TemporaryTexture tt)
+        {
+            _temporaryTextures.Add(tt);
         }
 
         internal Texture2D _createTextureCopy(string propertyName, Texture2D t)
@@ -588,7 +645,7 @@ namespace DigitalOpus.MB.Core
             {
                 if (_temporaryTextures[i].property.Equals(propertyName))
                 {
-					numDestroyed++;
+                    numDestroyed++;
                     MB_Utility.Destroy(_temporaryTextures[i].texture);
                     _temporaryTextures.RemoveAt(i);
                 }
@@ -619,7 +676,7 @@ namespace DigitalOpus.MB.Core
              */
         }
 
-        public void SuggestTreatment(List<GameObject> objsToMesh, Material[] resultMaterials, List<ShaderTextureProperty> _customShaderPropNames)
+        public void SuggestTreatment(List<GameObject> objsToMesh, Material[] resultMaterials, List<ShaderTextureProperty> _customShaderPropNames, List<string> texPropsToIgnore)
         {
             this._customShaderPropNames = _customShaderPropNames;
             StringBuilder sb = new StringBuilder();
@@ -698,7 +755,7 @@ namespace DigitalOpus.MB.Core
             for (int i = 0; i < resultMaterials.Length; i++)
             {
                 string resultMatShaderName = resultMaterials[i] != null ? "None" : resultMaterials[i].shader.name;
-                MB3_TextureCombinerPipeline.TexturePipelineData data = LoadPipelineData(resultMaterials[i], new List<ShaderTextureProperty>(), objsToMesh, new List<Material>(), new List<MB_TexSet>());
+                MB3_TextureCombinerPipeline.TexturePipelineData data = LoadPipelineData(resultMaterials[i], new List<ShaderTextureProperty>(), objsToMesh, new List<Material>(), texPropsToIgnore, new List<MB_TexSet>());
                 MB3_TextureCombinerPipeline._CollectPropertyNames(data, LOG_LEVEL);
                 foreach (Material m in m2gos.Keys)
                 {
@@ -735,6 +792,12 @@ namespace DigitalOpus.MB.Core
                 outstr = "====== There are possible problems with these meshes that may prevent them from combining well. TREATMENT SUGGESTIONS (copy and paste to text editor if too big) =====\n" + sb.ToString();
             }
             Debug.Log(outstr);
+        }
+
+        public static bool ShouldTextureBeLinear(ShaderTextureProperty shaderTextureProperty)
+        {
+            if (shaderTextureProperty.isNormalMap) return true;
+            else return false;
         }
 
         string PrintList(List<GameObject> gos)

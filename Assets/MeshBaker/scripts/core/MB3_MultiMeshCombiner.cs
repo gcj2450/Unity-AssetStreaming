@@ -124,7 +124,7 @@ namespace DigitalOpus.MB.Core
                 }
                 else if (value > MBVersion.MaxMeshVertexCount())
                 {
-                    Debug.LogError("Meshes in unity cannot have more than " + MBVersion.MaxMeshVertexCount() + " vertices.");
+                    Debug.LogError("MultiMeshCombiner error in maxVertsInMesh. Meshes in unity cannot have more than " + MBVersion.MaxMeshVertexCount() + " vertices. " + value);
                 }
                 else
                 {
@@ -194,12 +194,13 @@ namespace DigitalOpus.MB.Core
             }
             if ((_textureBakeResults.materialsAndUVRects == null || _textureBakeResults.materialsAndUVRects.Length == 0))
             {
-                Debug.LogError("Texture Bake Results has no materials in material to sourceUVRect map. Try baking materials. Can't combine meshes.");
+                Debug.LogError("Texture Bake Results has no materials in material to sourceUVRect map. Try baking materials. Can't combine meshes. " +
+                     "If you are trying to combine meshes without combining materials, try removing the Texture Bake Result.");
                 return false;
             }
 
 
-            if (_textureBakeResults.resultMaterials == null || _textureBakeResults.resultMaterials.Length == 0)
+            if (_textureBakeResults.NumResultMaterials() == 0)
             {
                 Debug.LogError("Texture Bake Results has no result materials. Try baking materials. Can't combine meshes.");
                 return false;
@@ -220,6 +221,14 @@ namespace DigitalOpus.MB.Core
             }
         }
 
+        public override void Apply(bool triangles, bool vertices, bool normals, bool tangents, bool uvs, bool uv2, bool uv3, bool uv4, bool colors, bool bones = false, bool blendShapeFlag = false, GenerateUV2Delegate uv2GenerationMethod = null)
+        {
+            Apply(triangles, vertices, normals, tangents,
+                uvs, uv2, uv3, uv4,
+                false, false, false, false,
+                colors, bones, blendShapeFlag, uv2GenerationMethod);
+        }
+
         public override void Apply(bool triangles,
                           bool vertices,
                           bool normals,
@@ -228,6 +237,10 @@ namespace DigitalOpus.MB.Core
                           bool uv2,
                           bool uv3,
                           bool uv4,
+                          bool uv5,
+                          bool uv6,
+                          bool uv7,
+                          bool uv8,
                           bool colors,
                           bool bones = false,
                           bool blendShapesFlag = false,
@@ -267,15 +280,26 @@ namespace DigitalOpus.MB.Core
             }
         }
 
-        public override void UpdateGameObjects(GameObject[] gos, bool recalcBounds = true,
-                                             bool updateVertices = true, bool updateNormals = true, bool updateTangents = true,
-                                            bool updateUV = false, bool updateUV2 = false, bool updateUV3 = false, bool updateUV4 = false,
-                                            bool updateColors = false, bool updateSkinningInfo = false)
+        public override bool UpdateGameObjects(GameObject[] gos, bool recalcBounds,
+                                        bool updateVertices, bool updateNormals, bool updateTangents,
+                                        bool updateUV, bool updateUV2, bool updateUV3, bool updateUV4,
+                                        bool updateColors, bool updateSkinningInfo)
+        {
+            return UpdateGameObjects(gos, recalcBounds, updateVertices, updateNormals, updateTangents,
+                updateUV, updateUV2, updateUV3, updateUV4, false, false, false, false,
+                updateColors, updateSkinningInfo);
+        }
+
+        public override bool UpdateGameObjects(GameObject[] gos, bool recalcBounds,
+                                        bool updateVertices, bool updateNormals, bool updateTangents,
+                                        bool updateUV, bool updateUV2, bool updateUV3, bool updateUV4,
+                                        bool updateUV5, bool updateUV6, bool updateUV7, bool updateUV8,
+                                        bool updateColors, bool updateSkinningInfo)
         {
             if (gos == null)
             {
                 Debug.LogError("list of game objects cannot be null");
-                return;
+                return false;
             }
 
             //build gos lists
@@ -298,15 +322,20 @@ namespace DigitalOpus.MB.Core
                 }
             }
 
+            bool success = true;
             for (int i = 0; i < meshCombiners.Count; i++)
             {
                 if (meshCombiners[i].gosToUpdate.Count > 0)
                 {
                     meshCombiners[i].isDirty = true;
                     GameObject[] gosToUpdate = meshCombiners[i].gosToUpdate.ToArray();
-                    meshCombiners[i].combinedMesh.UpdateGameObjects(gosToUpdate, recalcBounds, updateVertices, updateNormals, updateTangents, updateUV, updateUV2, updateUV3, updateUV4, updateColors, updateSkinningInfo);
+                    success = success && meshCombiners[i].combinedMesh.UpdateGameObjects(gosToUpdate, recalcBounds, updateVertices, updateNormals, updateTangents,
+                        updateUV, updateUV2, updateUV3, updateUV4, updateUV5, updateUV6, updateUV7, updateUV8,
+                        updateColors, updateSkinningInfo);
                 }
             }
+
+            return success;
         }
 
         public override bool AddDeleteGameObjects(GameObject[] gos, GameObject[] deleteGOs, bool disableRendererInSource = true)
@@ -334,6 +363,7 @@ namespace DigitalOpus.MB.Core
         {
             //Profile.Start//Profile("MB2_MultiMeshCombiner.AddDeleteGameObjects1");
             //PART 1 ==== Validate
+            if (deleteGOinstanceIDs == null) deleteGOinstanceIDs = emptyIDs;
             if (_usingTemporaryTextureBakeResult && gos != null && gos.Length > 0)
             {
                 MB_Utility.Destroy(_textureBakeResults);
@@ -355,7 +385,7 @@ namespace DigitalOpus.MB.Core
                 return false;
             }
             _distributeAmongBakers(gos, deleteGOinstanceIDs);
-            if (LOG_LEVEL >= MB2_LogLevel.debug) MB2_Log.LogDebug("MB2_MultiMeshCombiner.AddDeleteGameObjects numCombinedMeshes: " + meshCombiners.Count + " added:" + gos + " deleted:" + deleteGOinstanceIDs + " disableRendererInSource:" + disableRendererInSource + " maxVertsPerCombined:" + _maxVertsInMesh);
+            if (LOG_LEVEL >= MB2_LogLevel.debug) MB2_Log.LogDebug("MB2_MultiMeshCombiner.AddDeleteGameObjects numCombinedMeshes: " + meshCombiners.Count + " added:" + gos.Length + " deleted:" + deleteGOinstanceIDs.Length + " disableRendererInSource:" + disableRendererInSource + " maxVertsPerCombined:" + _maxVertsInMesh);
             return _bakeStep1(gos, deleteGOinstanceIDs, disableRendererInSource);
         }
 
@@ -570,20 +600,22 @@ namespace DigitalOpus.MB.Core
             }
         }
 
+        [System.Obsolete("BuildSourceBlendShapeToCombinedIndexMap is deprecated. The map will be attached to the combined SkinnedMeshRenderer objects as the MB_BlendShape2CombinedMap Component.")]
         public override Dictionary<MBBlendShapeKey, MBBlendShapeValue> BuildSourceBlendShapeToCombinedIndexMap()
         {
             Dictionary<MBBlendShapeKey, MBBlendShapeValue> map = new Dictionary<MBBlendShapeKey, MBBlendShapeValue>();
             for (int combinerIdx = 0; combinerIdx < meshCombiners.Count; combinerIdx++)
             {
-                for (int i = 0; i < meshCombiners[combinerIdx].combinedMesh.blendShapes.Length; i++)
+
+                if (meshCombiners[combinerIdx].combinedMesh.targetRenderer == null) continue;
+                MB_BlendShape2CombinedMap mapComponent = meshCombiners[combinerIdx].combinedMesh.targetRenderer.GetComponent<MB_BlendShape2CombinedMap>();
+                if (mapComponent == null) continue;
+                foreach (KeyValuePair<MBBlendShapeKey, MBBlendShapeValue> entry in mapComponent.srcToCombinedMap.GenerateMapFromSerializedData())
                 {
-                    MB3_MeshCombinerSingle.MBBlendShape bs = meshCombiners[combinerIdx].combinedMesh.blendShapes[i];
-                    MBBlendShapeValue bsv = new MBBlendShapeValue();
-                    bsv.combinedMeshGameObject = meshCombiners[combinerIdx].combinedMesh.targetRenderer.gameObject;
-                    bsv.blendShapeIndex = i;
-                    map.Add(new MBBlendShapeKey(bs.gameObjectID, bs.indexInSource), bsv);
+                    map.Add(entry.Key, entry.Value);
                 }
             }
+
             return map;
         }
 
@@ -598,7 +630,21 @@ namespace DigitalOpus.MB.Core
 
         public override void ClearMesh()
         {
+            // For the MultiMeshCombiner we want to destroy because that is what an "empty" multi mesh combiner looks like.
             DestroyMesh();
+        }
+
+        public override void ClearMesh(MB2_EditorMethodsInterface editorMethods)
+        {
+            DestroyMeshEditor(editorMethods);
+        }
+
+        public override void DisposeRuntimeCreated()
+        {
+            for (int i = 0; i < meshCombiners.Count; i++)
+            {
+                meshCombiners[i].combinedMesh.DisposeRuntimeCreated();
+            }
         }
 
         public override void DestroyMesh()
@@ -609,22 +655,27 @@ namespace DigitalOpus.MB.Core
                 {
                     MB_Utility.Destroy(meshCombiners[i].combinedMesh.targetRenderer.gameObject);
                 }
-                meshCombiners[i].combinedMesh.ClearMesh();
+                
+                meshCombiners[i].combinedMesh.DestroyMesh();
             }
+
             obj2MeshCombinerMap.Clear();
             meshCombiners.Clear();
         }
 
         public override void DestroyMeshEditor(MB2_EditorMethodsInterface editorMethods)
         {
+            editorMethods.Destroy(resultSceneObject);
             for (int i = 0; i < meshCombiners.Count; i++)
             {
-                if (meshCombiners[i].combinedMesh.targetRenderer != null)
-                {
-                    editorMethods.Destroy(meshCombiners[i].combinedMesh.targetRenderer.gameObject);
-                }
+                //if (meshCombiners[i].combinedMesh.targetRenderer != null)
+                //{
+                //    editorMethods.Destroy(meshCombiners[i].combinedMesh.targetRenderer.gameObject);
+                //}
+
                 meshCombiners[i].combinedMesh.ClearMesh();
             }
+
             obj2MeshCombinerMap.Clear();
             meshCombiners.Clear();
         }
@@ -632,22 +683,36 @@ namespace DigitalOpus.MB.Core
         void _setMBValues(MB3_MeshCombinerSingle targ)
         {
             targ.validationLevel = _validationLevel;
-            targ.renderType = renderType;
-            targ.outputOption = MB2_OutputOptions.bakeIntoSceneObject;
-            targ.lightmapOption = lightmapOption;
             targ.textureBakeResults = textureBakeResults;
-            targ.doNorm = doNorm;
-            targ.doTan = doTan;
-            targ.doCol = doCol;
-            targ.doUV = doUV;
-            targ.doUV3 = doUV3;
-            targ.doUV4 = doUV4;
-            targ.doBlendShapes = doBlendShapes;
-            targ.optimizeAfterBake = optimizeAfterBake;
-            targ.recenterVertsToBoundsCenter = recenterVertsToBoundsCenter;
-            targ.uv2UnwrappingParamsHardAngle = uv2UnwrappingParamsHardAngle;
-            targ.uv2UnwrappingParamsPackMargin = uv2UnwrappingParamsPackMargin;
-
+            
+            // Even though the MultiMeshBaker supports baking into prefabs, the sub-combiners don't do bake into prefab when
+            // this is happening. They do bake into sceneObject, then the MultiMeshBaker takes their output and combines it
+            // into a prefab.
+            targ.outputOption = MB2_OutputOptions.bakeIntoSceneObject;
+            if (settingsHolder != null)
+            {
+                targ.settingsHolder = settingsHolder;
+            } else 
+            {
+                targ.renderType = renderType;
+                targ.lightmapOption = lightmapOption;
+                targ.doNorm = doNorm;
+                targ.doTan = doTan;
+                targ.doCol = doCol;
+                targ.doUV = doUV;
+                targ.doUV3 = doUV3;
+                targ.doUV4 = doUV4;
+                targ.doUV5 = doUV5;
+                targ.doUV6 = doUV6;
+                targ.doUV7 = doUV7;
+                targ.doUV8 = doUV8;
+                targ.doBlendShapes = doBlendShapes;
+                targ.optimizeAfterBake = optimizeAfterBake;
+                targ.pivotLocationType = pivotLocationType;
+                targ.uv2UnwrappingParamsHardAngle = uv2UnwrappingParamsHardAngle;
+                targ.uv2UnwrappingParamsPackMargin = uv2UnwrappingParamsPackMargin;
+                targ.assignToMeshCustomizer = assignToMeshCustomizer;
+            }
         }
 
         public override List<Material> GetMaterialsOnTargetRenderer()

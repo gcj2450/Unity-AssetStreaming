@@ -4,10 +4,11 @@
 using System;
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 namespace DigitalOpus.MB.Core{
 
-	public interface MBVersionInterface{
+    public interface MBVersionInterface{
 		string version();
 		int GetMajorVersion();
 		int GetMinorVersion();
@@ -16,12 +17,11 @@ namespace DigitalOpus.MB.Core{
 		void SetActiveRecursively(GameObject go, bool isActive);
 		UnityEngine.Object[] FindSceneObjectsOfType(Type t);
 		bool IsRunningAndMeshNotReadWriteable(Mesh m);
-        Vector2[] GetMeshUV3orUV4(Mesh m, bool get3, MB2_LogLevel LOG_LEVEL);
+        Vector2[] GetMeshUVChannel(int channel, Mesh m, MB2_LogLevel LOG_LEVEL);
         void MeshClear(Mesh m, bool t);
-		void MeshAssignUV3(Mesh m, Vector2[] uv3s);
-        void MeshAssignUV4(Mesh m, Vector2[] uv4s);
+        void MeshAssignUVChannel(int channel, Mesh m, Vector2[] uvs);
         Vector4 GetLightmapTilingOffset(Renderer r);
-		Transform[] GetBones(Renderer r);
+		Transform[] GetBones(Renderer r, bool isSkinnedMeshWithBones);
         void OptimizeMesh(Mesh m);
         int GetBlendShapeFrameCount(Mesh m, int shapeIndex);
         float GetBlendShapeFrameWeight(Mesh m, int shapeIndex, int frameIndex);
@@ -30,11 +30,36 @@ namespace DigitalOpus.MB.Core{
         void AddBlendShapeFrame(Mesh m, string nm, float wt, Vector3[] vs, Vector3[] ns, Vector3[] ts);
         int MaxMeshVertexCount();
         void SetMeshIndexFormatAndClearMesh(Mesh m, int numVerts, bool vertices, bool justClearTriangles);
+        bool GraphicsUVStartsAtTop();
+
+        bool IsTextureReadable(Texture2D tex);
+        bool CollectPropertyNames(List<ShaderTextureProperty> texPropertyNames, ShaderTextureProperty[] shaderTexPropertyNames, List<ShaderTextureProperty> _customShaderPropNames, Material resultMaterial, MB2_LogLevel LOG_LEVEL);
+
+        void DoSpecialRenderPipeline_TexturePackerFastSetup(GameObject cameraGameObject);
+
+        ColorSpace GetProjectColorSpace();
+
+        MBVersion.PipelineType DetectPipeline();
+
+        string UnescapeURL(string url);
+
+        IEnumerator FindRuntimeMaterialsFromAddresses(MB2_TextureBakeResults textureBakeResult, MB2_TextureBakeResults.CoroutineResult isComplete);
     }
 
-	public class MBVersion
+    public class MBVersion
 	{
-		private static MBVersionInterface _MBVersion;
+
+        public const string MB_USING_HDRP = "MB_USING_HDRP";
+
+        public enum PipelineType
+        {
+            Unsupported,
+            Default,
+            URP,
+            HDRP
+        }
+
+        private static MBVersionInterface _MBVersion;
 
 		private static MBVersionInterface _CreateMBVersionConcrete(){
 			Type vit = null;
@@ -43,7 +68,7 @@ namespace DigitalOpus.MB.Core{
 #else
 			vit = typeof(MBVersionConcrete);
 #endif
-			return (MBVersionInterface) Activator.CreateInstance(vit);
+			return (MBVersionInterface) System.Activator.CreateInstance(vit);
 		}
 
 		public static string version(){
@@ -86,9 +111,9 @@ namespace DigitalOpus.MB.Core{
 			return _MBVersion.IsRunningAndMeshNotReadWriteable(m);
 		}
 
-        public static Vector2[] GetMeshUV3orUV4(Mesh m, bool get3, MB2_LogLevel LOG_LEVEL) {
+        public static Vector2[] GetMeshChannel(int channel, Mesh m, MB2_LogLevel LOG_LEVEL) {
             if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
-            return _MBVersion.GetMeshUV3orUV4(m,get3,LOG_LEVEL);
+            return _MBVersion.GetMeshUVChannel(channel, m,LOG_LEVEL);
         }
 
         public static void MeshClear(Mesh m, bool t){
@@ -96,14 +121,10 @@ namespace DigitalOpus.MB.Core{
 			_MBVersion.MeshClear(m,t);
 		}
 
-		public static void MeshAssignUV3(Mesh m, Vector2[] uv3s){
-			if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
-			_MBVersion.MeshAssignUV3(m,uv3s);
-		}
-
-        public static void MeshAssignUV4(Mesh m, Vector2[] uv4s) {
+        public static void MeshAssignUVChannel(int channel, Mesh m, Vector2[] uvs)
+        {
             if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
-            _MBVersion.MeshAssignUV4(m, uv4s);
+            _MBVersion.MeshAssignUVChannel(channel, m, uvs);
         }
 
         public static Vector4 GetLightmapTilingOffset(Renderer r){
@@ -111,9 +132,10 @@ namespace DigitalOpus.MB.Core{
 			return _MBVersion.GetLightmapTilingOffset(r);
 		}
 
-		public static Transform[] GetBones(Renderer r){
+		public static Transform[] GetBones(Renderer r, bool isSkinnedMeshWithBones)
+        {
 			if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
-			return _MBVersion.GetBones(r);
+			return _MBVersion.GetBones(r, isSkinnedMeshWithBones);
 		}
 
         public static void OptimizeMesh(Mesh m)
@@ -162,6 +184,71 @@ namespace DigitalOpus.MB.Core{
         {
             if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
             _MBVersion.SetMeshIndexFormatAndClearMesh(m, numVerts, vertices, justClearTriangles);
+        }
+
+        public static bool GraphicsUVStartsAtTop()
+        {
+            if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
+            return _MBVersion.GraphicsUVStartsAtTop();
+        }
+
+        public static bool IsTextureReadable(Texture2D tex)
+        {
+            if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
+            return _MBVersion.IsTextureReadable(tex);
+        }
+
+        public static void CollectPropertyNames(List<ShaderTextureProperty> texPropertyNames, ShaderTextureProperty[] shaderTexPropertyNames, List<ShaderTextureProperty> _customShaderPropNames, Material resultMaterial, MB2_LogLevel LOG_LEVEL)
+        {
+            if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
+            _MBVersion.CollectPropertyNames(texPropertyNames, shaderTexPropertyNames, _customShaderPropNames, resultMaterial, LOG_LEVEL);
+        }
+
+        internal static void DoSpecialRenderPipeline_TexturePackerFastSetup(GameObject cameraGameObject)
+        {
+            if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
+            _MBVersion.DoSpecialRenderPipeline_TexturePackerFastSetup(cameraGameObject);
+        }
+
+        internal static ColorSpace GetProjectColorSpace()
+        {
+            if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
+            return _MBVersion.GetProjectColorSpace();
+        }
+
+        public static PipelineType DetectPipeline()
+        {
+            if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
+            return _MBVersion.DetectPipeline();
+        }
+
+        public static string UnescapeURL(string url)
+        {
+            if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
+            return _MBVersion.UnescapeURL(url);
+        }
+
+        public static bool IsUsingAddressables()
+        {
+            foreach (var s in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (s.ToString().Contains("Addressables"))
+                {
+                    System.Type t = s.GetType("UnityEngine.AddressableAssets.AssetReference");
+                    if (t != null)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        internal static IEnumerator FindRuntimeMaterialsFromAddresses(MB2_TextureBakeResults textureBakeResult, MB2_TextureBakeResults.CoroutineResult isComplete)
+        {
+            if (_MBVersion == null) _MBVersion = _CreateMBVersionConcrete();
+            yield return _MBVersion.FindRuntimeMaterialsFromAddresses(textureBakeResult, isComplete);
         }
     }
 }

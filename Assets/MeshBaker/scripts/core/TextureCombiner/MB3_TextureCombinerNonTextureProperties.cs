@@ -168,7 +168,7 @@ namespace DigitalOpus.MB.Core
         {
             bool NonTexturePropertiesAreEqual(Material a, Material b);
             Texture2D TintTextureWithTextureCombiner(Texture2D t, MB_TexSet sourceMaterial, ShaderTextureProperty shaderPropertyName);
-            void AdjustNonTextureProperties(Material resultMat, List<ShaderTextureProperty> texPropertyNames, List<MB_TexSet> distinctMaterialTextures, MB2_EditorMethodsInterface editorMethods);
+            void AdjustNonTextureProperties(Material resultMat, List<ShaderTextureProperty> texPropertyNames, MB2_EditorMethodsInterface editorMethods);
             Color GetColorForTemporaryTexture(Material matIfBlender, ShaderTextureProperty texProperty);
             Color GetColorAsItWouldAppearInAtlasIfNoTexture(Material matIfBlender, ShaderTextureProperty texProperty);
         }
@@ -195,7 +195,7 @@ namespace DigitalOpus.MB.Core
                 return t;
             }
 
-            public void AdjustNonTextureProperties(Material resultMat, List<ShaderTextureProperty> texPropertyNames, List<MB_TexSet> distinctMaterialTextures, MB2_EditorMethodsInterface editorMethods)
+            public void AdjustNonTextureProperties(Material resultMat, List<ShaderTextureProperty> texPropertyNames, MB2_EditorMethodsInterface editorMethods)
             {
                 Debug.Assert(_textureProperties._considerNonTextureProperties == false);
                 if (resultMat == null || texPropertyNames == null) return;
@@ -272,7 +272,7 @@ namespace DigitalOpus.MB.Core
                 return t;
             }
 
-            public void AdjustNonTextureProperties(Material resultMat, List<ShaderTextureProperty> texPropertyNames, List<MB_TexSet> distinctMaterialTextures, MB2_EditorMethodsInterface editorMethods)
+            public void AdjustNonTextureProperties(Material resultMat, List<ShaderTextureProperty> texPropertyNames, MB2_EditorMethodsInterface editorMethods)
             {
                 if (resultMat == null || texPropertyNames == null) return;
 
@@ -335,7 +335,6 @@ namespace DigitalOpus.MB.Core
 
         public MB3_TextureCombinerNonTextureProperties(MB2_LogLevel ll, bool considerNonTextureProps)
         {
-            LOG_LEVEL = ll;
             _considerNonTextureProperties = considerNonTextureProps;
             textureProperty2DefaultColorMap = new Dictionary<string, Color>();
             for (int i = 0; i < defaultTextureProperty2DefaultColorMap.Length; i++)
@@ -382,7 +381,7 @@ namespace DigitalOpus.MB.Core
             resultMaterialTextureBlender = FindMatchingTextureBlender(resultMaterial.shader.name);
             if (resultMaterialTextureBlender != null)
             {
-                if (LOG_LEVEL >= MB2_LogLevel.debug) Debug.Log("Using _considerNonTextureProperties found a TextureBlender for result material. Using: " + resultMaterialTextureBlender);
+                if (LOG_LEVEL >= MB2_LogLevel.debug) Debug.Log("Using Consider Non-Texture Properties found a TextureBlender for result material. Using: " + resultMaterialTextureBlender);
             }
             else
             {
@@ -433,7 +432,7 @@ namespace DigitalOpus.MB.Core
             {
                 if (!tt.IsAbstract && !tt.IsInterface)
                 {
-                    TextureBlender instance = (TextureBlender)Activator.CreateInstance(tt);
+                    TextureBlender instance = (TextureBlender) System.Activator.CreateInstance(tt);
                     if (instance is TextureBlenderFallback)
                     {
                         fallbackTB = instance;
@@ -468,10 +467,10 @@ namespace DigitalOpus.MB.Core
         //using atlases don't want some properties such as _Color to be copied
         //from the original material because the atlas texture will be multiplied
         //by that color
-        internal void AdjustNonTextureProperties(Material resultMat, List<ShaderTextureProperty> texPropertyNames, List<MB_TexSet> distinctMaterialTextures, MB2_EditorMethodsInterface editorMethods)
+        internal void AdjustNonTextureProperties(Material resultMat, List<ShaderTextureProperty> texPropertyNames, MB2_EditorMethodsInterface editorMethods)
         {
             if (resultMat == null || texPropertyNames == null) return;
-            _nonTexturePropertiesBlender.AdjustNonTextureProperties(resultMat, texPropertyNames, distinctMaterialTextures, editorMethods);
+            _nonTexturePropertiesBlender.AdjustNonTextureProperties(resultMat, texPropertyNames, editorMethods);
         }
 
         internal Color GetColorAsItWouldAppearInAtlasIfNoTexture(Material matIfBlender, ShaderTextureProperty texProperty)

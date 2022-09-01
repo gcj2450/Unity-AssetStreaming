@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System;
@@ -55,6 +55,14 @@ namespace DigitalOpus.MB.Core
         /// </summary>
         public DRect matTilingRect { get; private set; }
 
+        /// <summary>
+        /// Returns -1 if this texture was imported as a normal map
+        /// Returns 1 if this texture was not imported as a normal map
+        /// Returns 0 if unknown
+        /// </summary>
+        public int isImportedAsNormalMap { get; private set; }
+
+        /*
         public MeshBakerMaterialTexture() { }
         public MeshBakerMaterialTexture(Texture tx)
         {
@@ -75,8 +83,9 @@ namespace DigitalOpus.MB.Core
                 Debug.LogError("An error occured. Texture must be Texture2D " + tx);
             }
         }
+        */
 
-        public MeshBakerMaterialTexture(Texture tx, Vector2 matTilingOffset, Vector2 matTilingScale, float texelDens)
+        public MeshBakerMaterialTexture(Texture tx, Vector2 matTilingOffset, Vector2 matTilingScale, float texelDens, int isImportedAsNormalMap)
         {
             if (tx is Texture2D)
             {
@@ -96,6 +105,7 @@ namespace DigitalOpus.MB.Core
             }
             matTilingRect = new DRect(matTilingOffset, matTilingScale);
             texelDensity = texelDens;
+            this.isImportedAsNormalMap = isImportedAsNormalMap;
         }
 
         public DRect GetEncapsulatingSamplingRect()
@@ -129,7 +139,8 @@ namespace DigitalOpus.MB.Core
             encapsulatingSamplingRect = r;
         }
 
-        //This should never be called until we are readyToBuildAtlases
+        // This should never be called until we are readyToBuildAtlases. The reason is that the textures
+        // may not exist, temporary textures may need to be created.
         public Texture2D GetTexture2D()
         {
             if (!readyToBuildAtlases)
@@ -584,6 +595,21 @@ namespace DigitalOpus.MB.Core
             }
         }
 
+        public Vector2 GetMaxRawTextureHeightWidth()
+        {
+            Vector2 max = new Vector2(0, 0);
+            for (int propIdx = 0; propIdx < ts.Length; propIdx++)
+            {
+                MeshBakerMaterialTexture tx = ts[propIdx];
+                if (!tx.isNull)
+                {
+                    max.x = Mathf.Max(max.x, tx.width);
+                    max.y = Mathf.Max(max.y, tx.height);
+                }
+            }
+            return max;
+        }
+
         private Rect GetEncapsulatingSamplingRectIfTilingSame()
         {
             Debug.Assert(allTexturesUseSameMatTiling, "This should never be called if different properties use different tiling. ");
@@ -620,10 +646,11 @@ namespace DigitalOpus.MB.Core
             }
         }
 
-        public void CreateColoredTexToReplaceNull(string propName, int propIdx, bool considerMeshUVs, MB3_TextureCombiner combiner, Color col)
+        public void CreateColoredTexToReplaceNull(string propName, int propIdx, bool considerMeshUVs, MB3_TextureCombiner combiner, Color col, bool isLinear)
         {
             MeshBakerMaterialTexture matTex = ts[propIdx];
-            matTex.t = combiner._createTemporaryTexture(propName, 16, 16, TextureFormat.ARGB32, true);
+            Texture2D tt = combiner._createTemporaryTexture(propName, 16, 16, TextureFormat.ARGB32, true, isLinear);
+            matTex.t = tt;
             MB_Utility.setSolidColor(matTex.GetTexture2D(), col);
         }
 
@@ -775,7 +802,7 @@ namespace DigitalOpus.MB.Core
             }
         }
 
-        internal void DrawRectsToMergeGizmos(Color encC, Color innerC)
+        public void DrawRectsToMergeGizmos(Color encC, Color innerC)
         {
             DRect r = ts[0].GetEncapsulatingSamplingRect();
             r.Expand(.05f);
